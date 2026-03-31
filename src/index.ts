@@ -14,6 +14,8 @@ export { OllamaProvider } from "./core/providers/ollama.js";
 export { FallbackProvider } from "./core/providers/fallback.js";
 export { AuditLogger } from "./core/audit-logger.js";
 export { ContextCompressor } from "./core/context-compressor.js";
+export { PlanExecutor } from "./core/plan-mode.js";
+export type { Plan, PlannedAction } from "./core/plan-mode.js";
 
 // Skills
 export { SkillLoader } from "./skills/loader.js";
