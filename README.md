@@ -14,6 +14,7 @@ Secure. Composable. Multi-agent.
 
 - [Overview](#overview)
 - [Key Features](#key-features)
+- [Security First](#security-first)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -29,6 +30,7 @@ Secure. Composable. Multi-agent.
 - [Environment Variables](#environment-variables)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -60,6 +62,62 @@ Nexus gives you:
 | **Platform Adapters** | Built-in connectors for Telegram, Discord, and Slack |
 | **Token Budget Tracking** | Automatic cost estimation and budget enforcement |
 | **Type-Safe** | Full TypeScript with Zod validation at every boundary |
+
+---
+
+## Security First
+
+AI agents that execute code, access files, and connect to external services must be **secure by default**. The 2026 wave of AI agent security incidents — exposed instances, leaked API keys, malicious plugin marketplaces — demonstrated that security cannot be an afterthought.
+
+Nexus was designed from day one with a **zero-trust architecture** for tool execution:
+
+### How Nexus Keeps You Safe
+
+| Threat | How Nexus Mitigates |
+|---|---|
+| **Unauthorized tool execution** | Every tool requires explicit permission. Default mode = `ask` the user |
+| **Overly broad access** | Per-tool rules with pattern matching. Allow `git status` but deny `rm -rf /` |
+| **Malicious plugins** | No centralized marketplace. Plugins are loaded locally from trusted sources |
+| **Exposed instances** | No HTTP server by default. CLI and stdio-only unless explicitly configured |
+| **API key leakage** | Keys read from env vars, never stored in config files or transmitted to plugins |
+| **Runaway agents** | Token budget limits, max turn limits, abort signals propagated through the entire chain |
+| **Sub-agent escalation** | Sub-agents inherit parent's permission rules. No privilege escalation by default |
+
+### Permission Model in Practice
+
+```
+# Allow read-only tools globally
+ReadFile  -> allow
+Glob      -> allow
+Grep      -> allow
+
+# Allow specific shell commands
+Bash(git *)       -> allow
+Bash(npm test)    -> allow
+Bash(npm run *)   -> allow
+
+# Block dangerous patterns
+Bash(rm -rf *)    -> deny
+Bash(curl * | sh) -> deny
+Bash(sudo *)      -> deny
+
+# Everything else -> ask the user
+```
+
+### Comparison with Alternatives
+
+| Security Feature | Nexus | Typical AI Agents |
+|---|---|---|
+| Default permission mode | Ask user | Allow all |
+| Per-tool granularity | Yes, with patterns | No |
+| Rule sources | 4 layers (user/project/session/cli) | Single config |
+| Read-only mode | Built-in `plan` mode | Not available |
+| Budget enforcement | Per-session USD limit | None |
+| Sub-agent isolation | Isolated conversations + inherited rules | Shared context |
+| Auth required | Always (API key) | Often optional |
+| Network exposure | None by default | HTTP often default |
+
+> **Philosophy:** An AI agent should never do more than what it's explicitly allowed to do. Nexus follows the principle of least privilege at every layer.
 
 ---
 
@@ -823,6 +881,77 @@ nexus/
 ├── vitest.config.ts
 └── README.md
 ```
+
+---
+
+## Roadmap
+
+Nexus is under active development. Here's where we're headed:
+
+### Phase 1: Foundation (Current)
+- [x] Core engine with streaming LLM + tool loop
+- [x] Fine-grained permission system with pattern matching
+- [x] 7 built-in tools (Bash, ReadFile, WriteFile, EditFile, Glob, Grep, WebFetch)
+- [x] MCP client and server integration
+- [x] Multi-agent orchestration (coordinator + sub-agents)
+- [x] SQLite-backed memory with FTS5 search
+- [x] Platform adapters (Telegram, Discord, Slack)
+- [x] Plugin system with dynamic loading
+- [x] CLI with interactive REPL
+- [x] 298 tests passing
+
+### Phase 2: Provider Ecosystem & Self-Hosting
+- [ ] **OpenAI provider** — GPT-4o, o1, o3 support
+- [ ] **Ollama / local model provider** — Run fully offline with Llama, Mistral, etc.
+- [ ] **Google Gemini provider** — Vertex AI integration
+- [ ] **AWS Bedrock provider** — Enterprise LLM access
+- [ ] **Provider auto-fallback** — Automatic failover between providers on errors
+- [ ] **Docker image** — One-command self-hosted deployment
+- [ ] **Docker Compose** — Full stack with PostgreSQL for team memory
+
+### Phase 3: Advanced Agent Capabilities
+- [ ] **Context compression** — Automatic summarization for long sessions
+- [ ] **Skill system** — Reusable, shareable workflows (`.nexus/skills/build.md`)
+- [ ] **Agent definitions** — Custom agent types with specialized system prompts and tool sets
+- [ ] **Worktree isolation** — Sub-agents work in isolated git worktrees
+- [ ] **Background agents** — Long-running agents that notify on completion
+- [ ] **Agent-to-agent messaging** — Rich structured messages between agents
+- [ ] **Plan mode** — Agents propose changes before executing, user approves
+
+### Phase 4: Security & Enterprise
+- [ ] **OAuth 2.0 for MCP servers** — Secure remote tool authentication
+- [ ] **Audit logging** — Every tool execution logged with inputs, outputs, permissions
+- [ ] **Role-based access control** — Team-level permission policies
+- [ ] **Encrypted memory** — At-rest encryption for sensitive memories
+- [ ] **Rate limiting** — Per-tool and per-agent rate limits
+- [ ] **Sandboxed execution** — Run Bash tool in Docker containers
+- [ ] **SOC 2 compliance guide** — Documentation for enterprise adoption
+
+### Phase 5: Platform & Community
+- [ ] **Web UI** — Browser-based interface with conversation management
+- [ ] **VS Code extension** — IDE integration with inline agent assistance
+- [ ] **WhatsApp adapter** — WhatsApp Business API connector
+- [ ] **Matrix adapter** — Decentralized chat support
+- [ ] **Email adapter** — Process and respond to emails
+- [ ] **Webhook platform** — Generic HTTP webhook adapter for any service
+- [ ] **Nexus Hub** — Community-curated MCP server directory (security-reviewed)
+- [ ] **npx create-nexus-plugin** — Scaffolding for plugin development
+
+### Phase 6: Intelligence & Autonomy
+- [ ] **Proactive agents** — Agents that monitor and act without prompting
+- [ ] **Scheduled tasks** — Cron-like scheduling for recurring agent work
+- [ ] **Learning from feedback** — Agents improve from user corrections
+- [ ] **Cross-session context** — Automatic relevant memory recall per conversation
+- [ ] **Multi-model routing** — Use cheap models for simple tasks, powerful models for complex ones
+- [ ] **Cost optimization** — Intelligent caching and prompt optimization
+
+### Community Goals
+- [ ] 100 GitHub stars
+- [ ] 10 community plugins
+- [ ] 5 MCP server integrations documented
+- [ ] First production deployment case study
+
+> Want to contribute to any of these? Check the [Contributing](#contributing) section below or open an issue to discuss!
 
 ---
 
