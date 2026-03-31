@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-342%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-384%20passing-brightgreen.svg)]()
 
 ---
 
@@ -882,7 +882,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 342 tests covering all core modules.
+Nexus has a comprehensive test suite with 384 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -908,7 +908,10 @@ npx vitest run src/permissions/index.test.ts
 | OpenAI Provider | 18 | SSE parsing, tool calling, error handling |
 | Ollama Provider | 17 | Streaming, local connection, model listing |
 | Fallback Provider | 9 | Failover chains, error propagation |
-| **Total** | **342** | **All passing** |
+| Context Compressor | 13 | Token estimation, compression logic |
+| Skill System | 17 | Frontmatter parsing, arg substitution, tool |
+| Audit Logger | 12 | JSONL logging, scrubbing, truncation |
+| **Total** | **384** | **All passing** |
 
 ---
 
@@ -928,6 +931,8 @@ nexus/
 │   │       ├── openai.ts         # OpenAI LLM provider (GPT-4o, o1, o3)
 │   │       ├── ollama.ts         # Ollama local model provider
 │   │       └── fallback.ts       # Auto-failover provider chain
+│   │   ├── context-compressor.ts # Auto-summarization for long sessions
+│   │   └── audit-logger.ts       # JSONL tool execution logging
 │   ├── tools/
 │   │   ├── index.ts              # Tool exports + createDefaultTools()
 │   │   ├── bash.ts               # Shell execution
@@ -951,6 +956,10 @@ nexus/
 │   ├── memory/
 │   │   ├── index.ts              # MemoryManager (SQLite)
 │   │   └── tool.ts               # Memory tool for LLM
+│   ├── skills/
+│   │   ├── index.ts              # Skills exports
+│   │   ├── loader.ts             # SkillLoader (YAML frontmatter parser)
+│   │   └── skill-tool.ts         # Skill execution tool
 │   ├── plugins/
 │   │   └── index.ts              # PluginLoader
 │   ├── platforms/

@@ -305,6 +305,8 @@ export interface NexusConfig {
   plugins: string[];
   /** Max budget in USD per session */
   maxBudgetUsd?: number;
+  /** Max context window tokens for compression (default: 100000) */
+  contextTokens?: number;
   /** Max concurrent tool executions */
   maxConcurrentTools: number;
   /** Enable extended thinking */

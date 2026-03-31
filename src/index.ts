@@ -12,6 +12,12 @@ export { AnthropicProvider } from "./core/providers/anthropic.js";
 export { OpenAIProvider } from "./core/providers/openai.js";
 export { OllamaProvider } from "./core/providers/ollama.js";
 export { FallbackProvider } from "./core/providers/fallback.js";
+export { AuditLogger } from "./core/audit-logger.js";
+export { ContextCompressor } from "./core/context-compressor.js";
+
+// Skills
+export { SkillLoader } from "./skills/loader.js";
+export { createSkillTool } from "./skills/skill-tool.js";
 
 // Types (re-export everything)
 export type {

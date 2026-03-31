@@ -20,6 +20,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from "../types/index.js";
+import { ContextCompressor } from "./context-compressor.js";
 import { ToolExecutor } from "./tool-executor.js";
 
 /**
@@ -48,6 +49,7 @@ export class NexusEngine extends EventEmitter<{
     outputTokens: 0,
   };
   private abortController: AbortController = new AbortController();
+  private compressor: ContextCompressor;
 
   constructor(
     provider: LLMProvider,
@@ -58,6 +60,7 @@ export class NexusEngine extends EventEmitter<{
     this.provider = provider;
     this.config = config;
     this.permissions = permissions;
+    this.compressor = new ContextCompressor(config.contextTokens ?? 100_000);
   }
 
   // ---------------------------------------------------------------------------
@@ -109,6 +112,11 @@ export class NexusEngine extends EventEmitter<{
 
       turnCount++;
       yield { type: "turn_start", turnNumber: turnCount };
+
+      // Compress context if needed
+      if (this.compressor.shouldCompress(this.messages)) {
+        this.messages = await this.compressor.compress(this.messages, this.provider);
+      }
 
       // Build LLM request
       const request = this.buildRequest(options?.systemPrompt);

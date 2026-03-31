@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-04-01
+
+### Added
+- **Context Compression** — Automatic conversation summarization when context exceeds 80% of token limit. Keeps first + last 10 messages intact, summarizes the middle
+- **Skill System** — Reusable workflow definitions loaded from `.nexus/skills/*.md`. YAML frontmatter for metadata, markdown body for prompt template, `{{arg0}}` substitution
+- **Audit Logger** — JSONL-based logging of every tool execution: timestamp, tool name, input (sensitive fields redacted), output (truncated), permission decision, duration
+- **42 new tests** — Context compressor (13), Skills (17), Audit logger (12). Total: 384 tests
+
+### Changed
+- Engine now auto-compresses context when approaching token limits
+- Updated exports with new modules (ContextCompressor, SkillLoader, AuditLogger)
+
 ## [0.2.0] - 2026-04-01
 
 ### Added
