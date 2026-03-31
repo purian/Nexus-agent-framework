@@ -1,8 +1,7 @@
 import { EventEmitter } from "eventemitter3";
-import { v4 as uuid } from "uuid";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import type {
   EngineEvent,
-  LLMEvent,
   LLMProvider,
   LLMRequest,
   Message,
@@ -16,7 +15,6 @@ import type {
   Tool,
   ToolContext,
   ToolDefinition,
-  ToolResult,
   ToolResultBlock,
   ToolUseBlock,
 } from "../types/index.js";
@@ -481,7 +479,7 @@ export class NexusEngine extends EventEmitter<{
       (tool) => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: this.zodToJsonSchema(tool.inputSchema),
+        inputSchema: this.zodToJsonSchemaObj(tool.inputSchema),
       }),
     );
 
@@ -533,13 +531,15 @@ export class NexusEngine extends EventEmitter<{
     return inputCost + outputCost;
   }
 
-  private zodToJsonSchema(schema: unknown): Record<string, unknown> {
-    // Simple Zod-to-JSON-Schema conversion
-    // In production, use zod-to-json-schema package
-    if (schema && typeof schema === "object" && "description" in schema) {
-      return schema as Record<string, unknown>;
+  private zodToJsonSchemaObj(schema: unknown): Record<string, unknown> {
+    try {
+      const jsonSchema = zodToJsonSchema(schema as any, { target: "openApi3" });
+      // Remove the top-level $schema key — Anthropic doesn't want it
+      const { $schema, ...rest } = jsonSchema as Record<string, unknown>;
+      return rest;
+    } catch {
+      return { type: "object", properties: {} };
     }
-    return { type: "object", properties: {} };
   }
 
   /** Reset conversation history */

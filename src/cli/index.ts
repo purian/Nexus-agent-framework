@@ -76,40 +76,36 @@ function buildConfig(opts: Record<string, unknown>): NexusConfig {
  * as the default; other providers can be added here.
  */
 async function createProvider(config: NexusConfig): Promise<LLMProvider> {
-  // Dynamic import so we don't hard-depend on every provider at startup
   if (config.defaultProvider === "anthropic") {
     try {
-      // @ts-expect-error -- provider module may not exist yet
-      const mod: any = await import("../providers/anthropic.js");
-      return mod.createAnthropicProvider();
-    } catch {
-      // If no dedicated provider module exists yet, return a stub that errors
-      return stubProvider(config.defaultProvider);
+      const { AnthropicProvider } = await import("../core/providers/anthropic.js");
+      return new AnthropicProvider();
+    } catch (err) {
+      return stubProvider(config.defaultProvider, err);
     }
   }
 
   if (config.defaultProvider === "openai") {
     try {
       // @ts-expect-error -- provider module may not exist yet
-      const mod: any = await import("../providers/openai.js");
+      const mod: any = await import("../core/providers/openai.js");
       return mod.createOpenAIProvider();
-    } catch {
-      return stubProvider(config.defaultProvider);
+    } catch (err) {
+      return stubProvider(config.defaultProvider, err);
     }
   }
 
   return stubProvider(config.defaultProvider);
 }
 
-function stubProvider(name: string): LLMProvider {
+function stubProvider(name: string, cause?: unknown): LLMProvider {
   return {
     name,
     async *chat() {
       yield {
         type: "error" as const,
         error: new Error(
-          `Provider "${name}" is not yet implemented. ` +
-            `Create src/providers/${name}.ts and export createProvider().`,
+          `Provider "${name}" failed to load: ${cause instanceof Error ? cause.message : "not implemented"}.`,
         ),
       };
     },
@@ -198,14 +194,11 @@ async function createEngine(config: NexusConfig): Promise<NexusEngine> {
   const permissions = buildPermissions(config);
   const engine = new NexusEngine(provider, config, permissions);
 
-  // Attempt to load built-in tools
+  // Load built-in tools
   try {
-    const toolsMod: any = await import("../tools/index.js");
-    if (typeof toolsMod.getBuiltinTools === "function") {
-      const tools = toolsMod.getBuiltinTools() as any[];
-      for (const tool of tools) {
-        engine.registerTool(tool);
-      }
+    const { createDefaultTools } = await import("../tools/index.js");
+    for (const tool of createDefaultTools()) {
+      engine.registerTool(tool);
     }
   } catch {
     // Tools module may not exist yet; that's fine
