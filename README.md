@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-298%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-342%20passing-brightgreen.svg)]()
 
 ---
 
@@ -346,6 +346,89 @@ User Message → LLM API (streaming) → Tool Calls → Execute Tools → Feed R
 | **Memory Manager** | SQLite-backed persistent memory with FTS5 search |
 | **Plugin Loader** | Dynamic plugin loading from npm or filesystem |
 | **Platform Adapters** | Telegram, Discord, Slack connectivity |
+
+---
+
+## LLM Providers
+
+Nexus supports multiple LLM providers out of the box, with zero-dependency HTTP implementations (no SDK lock-in).
+
+| Provider | Models | Config |
+|---|---|---|
+| **Anthropic** | Claude Sonnet, Opus, Haiku | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-4o, o1, o3 | `OPENAI_API_KEY` |
+| **Ollama** | Llama, Mistral, Gemma, any local model | Local (no key needed) |
+| **Fallback** | Chain any providers with auto-failover | Programmatic |
+
+### Switching Providers
+
+```bash
+# Use OpenAI
+nexus --provider openai --model gpt-4o
+
+# Use local Ollama
+nexus --provider ollama --model llama3
+
+# Via environment
+NEXUS_PROVIDER=openai NEXUS_MODEL=gpt-4o nexus
+```
+
+### Provider Fallback
+
+Chain providers so if one fails, the next is tried automatically:
+
+```typescript
+import { AnthropicProvider, OpenAIProvider, FallbackProvider } from "nexus-agent";
+
+const provider = new FallbackProvider([
+  new AnthropicProvider(),  // Try Anthropic first
+  new OpenAIProvider(),      // Fall back to OpenAI
+]);
+```
+
+### Custom Base URLs
+
+Both OpenAI and Ollama providers support custom base URLs for proxies or self-hosted instances:
+
+```typescript
+import { OpenAIProvider } from "nexus-agent";
+
+// Use with any OpenAI-compatible API
+const provider = new OpenAIProvider({
+  baseUrl: "https://my-proxy.example.com/v1",
+  apiKey: "my-key",
+});
+```
+
+---
+
+## Docker
+
+### Quick Start with Docker
+
+```bash
+# Build
+docker build -t nexus .
+
+# Run interactive REPL
+docker run -it -e ANTHROPIC_API_KEY=sk-ant-... nexus
+
+# Run single command
+docker run -e ANTHROPIC_API_KEY=sk-ant-... nexus node dist/cli/index.js run "hello"
+```
+
+### Docker Compose
+
+```bash
+# Copy env file and set your keys
+cp .env.example .env
+
+# Run REPL mode
+docker compose run nexus
+
+# Run MCP server mode (port 3000)
+docker compose up nexus-server
+```
 
 ---
 
@@ -799,7 +882,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 298 tests covering all core modules.
+Nexus has a comprehensive test suite with 342 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -822,7 +905,10 @@ npx vitest run src/permissions/index.test.ts
 | Memory System | 57 | SQLite CRUD, FTS5 search, memory tool |
 | Agent Coordinator | 55 | Spawning, messaging, lifecycle management |
 | Config System | 68 | Defaults, env vars, full precedence chain |
-| **Total** | **298** | **All passing** |
+| OpenAI Provider | 18 | SSE parsing, tool calling, error handling |
+| Ollama Provider | 17 | Streaming, local connection, model listing |
+| Fallback Provider | 9 | Failover chains, error propagation |
+| **Total** | **342** | **All passing** |
 
 ---
 
@@ -838,7 +924,10 @@ nexus/
 │   │   ├── engine.ts             # NexusEngine — main agent loop
 │   │   ├── tool-executor.ts      # Tool management
 │   │   └── providers/
-│   │       └── anthropic.ts      # Anthropic LLM provider
+│   │       ├── anthropic.ts      # Anthropic LLM provider
+│   │       ├── openai.ts         # OpenAI LLM provider (GPT-4o, o1, o3)
+│   │       ├── ollama.ts         # Ollama local model provider
+│   │       └── fallback.ts       # Auto-failover provider chain
 │   ├── tools/
 │   │   ├── index.ts              # Tool exports + createDefaultTools()
 │   │   ├── bash.ts               # Shell execution

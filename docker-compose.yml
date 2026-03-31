@@ -1,0 +1,25 @@
+services:
+  nexus:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ~/.nexus:/data
+    stdin_open: true
+    tty: true
+
+  nexus-server:
+    build: .
+    command: ["node", "dist/cli/index.js", "serve"]
+    env_file:
+      - .env
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ~/.nexus:/data
+    ports:
+      - "3000:3000"

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-01
+
+### Added
+- **OpenAI Provider** — GPT-4o, o1, o3 support via native fetch (no SDK dependency). Full streaming with function calling
+- **Ollama Provider** — Local model support (Llama, Mistral, etc.) via OpenAI-compatible API. Includes `listModels()` support
+- **Fallback Provider** — Automatic failover between providers on errors. Chain any number of providers
+- **Docker Support** — Multi-stage Dockerfile, docker-compose for REPL and MCP server modes
+- **Project Instructions** — Load `.nexus/instructions.md` or `.nexus.md` for project-specific system prompts
+- **44 new tests** — OpenAI provider (18), Ollama provider (17), Fallback provider (9). Total: 342 tests
+
+### Changed
+- CLI now supports `--provider ollama` and `--provider openai` in addition to `anthropic`
+- Engine system prompt now includes working directory and project instructions
+- Improved error messages when provider fails to load
+
 ## [0.1.0] - 2026-04-01
 
 ### Added

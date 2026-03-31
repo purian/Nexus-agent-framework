@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { EventEmitter } from "eventemitter3";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type {
@@ -499,6 +501,9 @@ export class NexusEngine extends EventEmitter<{
       "You have access to tools that let you interact with the user's system.",
       "Always use the most appropriate tool for the task.",
       "Be concise and direct in your responses.",
+      "",
+      "When performing file operations, always use absolute paths or paths relative to the working directory.",
+      `Your working directory is: ${this.config.workingDirectory}`,
     ];
 
     if (this.tools.size > 0) {
@@ -507,7 +512,39 @@ export class NexusEngine extends EventEmitter<{
       );
     }
 
+    // Load project instructions (.nexus/instructions.md)
+    const instructions = this.loadProjectInstructions();
+    if (instructions) {
+      parts.push(
+        "\n# Project Instructions",
+        instructions,
+      );
+    }
+
     return parts.join("\n");
+  }
+
+  /**
+   * Load project-specific instructions from .nexus/instructions.md
+   * if it exists in the working directory.
+   */
+  private loadProjectInstructions(): string | null {
+    const paths = [
+      join(this.config.workingDirectory, ".nexus", "instructions.md"),
+      join(this.config.workingDirectory, ".nexus.md"),
+    ];
+
+    for (const filePath of paths) {
+      if (existsSync(filePath)) {
+        try {
+          return readFileSync(filePath, "utf-8").trim();
+        } catch {
+          // Ignore read errors
+        }
+      }
+    }
+
+    return null;
   }
 
   // ---------------------------------------------------------------------------

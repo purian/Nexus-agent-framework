@@ -18,7 +18,7 @@ import type {
 // Version & Program Setup
 // ============================================================================
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const program = new Command()
   .name("nexus")
@@ -87,9 +87,17 @@ async function createProvider(config: NexusConfig): Promise<LLMProvider> {
 
   if (config.defaultProvider === "openai") {
     try {
-      // @ts-expect-error -- provider module may not exist yet
-      const mod: any = await import("../core/providers/openai.js");
-      return mod.createOpenAIProvider();
+      const { OpenAIProvider } = await import("../core/providers/openai.js");
+      return new OpenAIProvider();
+    } catch (err) {
+      return stubProvider(config.defaultProvider, err);
+    }
+  }
+
+  if (config.defaultProvider === "ollama") {
+    try {
+      const { OllamaProvider } = await import("../core/providers/ollama.js");
+      return new OllamaProvider();
     } catch (err) {
       return stubProvider(config.defaultProvider, err);
     }

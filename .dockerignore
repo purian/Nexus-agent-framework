@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.env
+*.db
+.DS_Store
+coverage
+*.md
+!README.md

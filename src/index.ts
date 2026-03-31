@@ -1,15 +1,17 @@
 /**
  * Nexus — An open-source, MCP-native personal AI agent framework.
  *
- * Secure, composable, multi-agent.
- *
- * Inspired by the architectural patterns of Claude Code,
- * designed to surpass OpenClaw in security, composability, and extensibility.
+ * Secure. Composable. Multi-agent.
  */
 
 // Core
 export { NexusEngine } from "./core/engine.js";
+
+// Providers
 export { AnthropicProvider } from "./core/providers/anthropic.js";
+export { OpenAIProvider } from "./core/providers/openai.js";
+export { OllamaProvider } from "./core/providers/ollama.js";
+export { FallbackProvider } from "./core/providers/fallback.js";
 
 // Types (re-export everything)
 export type {
