@@ -1,6 +1,7 @@
 node_modules/
 dist/
 roadmap.yaml
+diary.md
 *.tsbuildinfo
 .env
 .env.local
