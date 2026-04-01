@@ -1,6 +1,7 @@
 import * as readline from "node:readline";
 import chalk from "chalk";
 import type { NexusEngine } from "../core/engine.js";
+import type { Plan } from "../core/plan-mode.js";
 import type { EngineEvent, PermissionDecision, TokenUsage } from "../types/index.js";
 
 // ============================================================================
@@ -88,6 +89,26 @@ function renderEvent(event: EngineEvent, state: ReplState): void {
       showTurnUsage(event.totalUsage);
       break;
 
+    case "plan_action_intercepted":
+      process.stdout.write(
+        chalk.magenta("  [Plan] Queued: ") +
+          chalk.bold(event.toolName) +
+          chalk.dim(" — " + truncate(event.description, 80)) +
+          "\n",
+      );
+      break;
+
+    case "plan_created":
+      process.stdout.write(
+        "\n" +
+          chalk.magenta.bold("Plan created") +
+          chalk.dim(` (${event.actionCount} action${event.actionCount === 1 ? "" : "s"})`) +
+          "\n" +
+          chalk.dim("Use /plan show to review, /plan approve to approve, /plan execute to run.") +
+          "\n",
+      );
+      break;
+
     // permission_request is handled separately via the engine event emitter
     default:
       break;
@@ -168,7 +189,8 @@ function handleSlashCommand(line: string, state: ReplState): boolean {
   const trimmed = line.trim();
   if (!trimmed.startsWith("/")) return false;
 
-  const [cmd] = trimmed.split(/\s+/);
+  const parts = trimmed.split(/\s+/);
+  const cmd = parts[0];
 
   switch (cmd) {
     case "/quit":
@@ -208,20 +230,214 @@ function handleSlashCommand(line: string, state: ReplState): boolean {
       );
       return true;
 
+    case "/plan":
+      handlePlanCommand(parts.slice(1), state);
+      return true;
+
     case "/help":
       process.stdout.write(
         chalk.bold("Commands:\n") +
-          "  /quit, /exit   Exit the REPL\n" +
-          "  /reset         Clear conversation history\n" +
-          "  /tools         List registered tools\n" +
-          "  /usage         Show token usage stats\n" +
-          "  /help          Show this help\n",
+          "  /quit, /exit          Exit the REPL\n" +
+          "  /reset                Clear conversation history\n" +
+          "  /tools                List registered tools\n" +
+          "  /usage                Show token usage stats\n" +
+          "  /plan [subcommand]    Plan mode controls\n" +
+          "  /help                 Show this help\n",
       );
       return true;
 
     default:
       process.stdout.write(chalk.red(`Unknown command: ${cmd}\n`));
       return true;
+  }
+}
+
+// ============================================================================
+// Plan Commands
+// ============================================================================
+
+function handlePlanCommand(args: string[], state: ReplState): void {
+  const sub = args[0] ?? "";
+  const engine = state.engine;
+  const executor = engine.getPlanExecutor();
+
+  switch (sub) {
+    case "":
+    case "on":
+      engine.enterPlanMode();
+      process.stdout.write(
+        chalk.magenta.bold("Plan mode ON") +
+          chalk.dim(" — write actions will be queued for review instead of executed.") +
+          "\n",
+      );
+      break;
+
+    case "off":
+      engine.exitPlanMode();
+      process.stdout.write(chalk.yellow("Plan mode OFF") + "\n");
+      break;
+
+    case "status":
+      process.stdout.write(
+        "Plan mode: " +
+          (engine.isPlanMode() ? chalk.magenta.bold("ON") : chalk.dim("OFF")) +
+          "\n",
+      );
+      break;
+
+    case "show": {
+      const plans = executor.getPlans().filter((p) => p.status === "pending" || p.status === "partial");
+      if (plans.length === 0) {
+        process.stdout.write(chalk.dim("No pending plans.\n"));
+        break;
+      }
+      for (const plan of plans) {
+        renderPlan(plan);
+      }
+      break;
+    }
+
+    case "approve": {
+      const planId = args[1];
+      const actionId = args[2];
+      const plans = executor.getPlans().filter((p) => p.status === "pending" || p.status === "partial");
+
+      if (plans.length === 0) {
+        process.stdout.write(chalk.dim("No pending plans to approve.\n"));
+        break;
+      }
+
+      const target = planId ? executor.getPlan(planId) : plans[plans.length - 1];
+      if (!target) {
+        process.stdout.write(chalk.red("Plan not found.\n"));
+        break;
+      }
+
+      if (actionId) {
+        executor.approveAction(target.id, actionId);
+        process.stdout.write(chalk.green(`Action ${actionId.slice(0, 8)} approved.\n`));
+      } else {
+        executor.approvePlan(target.id);
+        process.stdout.write(chalk.green(`Plan approved (${target.actions.length} actions).\n`));
+      }
+      break;
+    }
+
+    case "reject": {
+      const planId = args[1];
+      const actionId = args[2];
+      const plans = executor.getPlans().filter((p) => p.status === "pending" || p.status === "partial");
+
+      if (plans.length === 0) {
+        process.stdout.write(chalk.dim("No pending plans to reject.\n"));
+        break;
+      }
+
+      const target = planId ? executor.getPlan(planId) : plans[plans.length - 1];
+      if (!target) {
+        process.stdout.write(chalk.red("Plan not found.\n"));
+        break;
+      }
+
+      if (actionId) {
+        executor.rejectAction(target.id, actionId);
+        process.stdout.write(chalk.red(`Action ${actionId.slice(0, 8)} rejected.\n`));
+      } else {
+        executor.rejectPlan(target.id);
+        process.stdout.write(chalk.red(`Plan rejected.\n`));
+      }
+      break;
+    }
+
+    case "execute": {
+      const plans = executor.getPlans().filter(
+        (p) => p.status === "approved" || p.status === "partial",
+      );
+      if (plans.length === 0) {
+        process.stdout.write(chalk.dim("No approved plans to execute. Use /plan approve first.\n"));
+        break;
+      }
+
+      const target = args[1] ? executor.getPlan(args[1]) : plans[plans.length - 1];
+      if (!target) {
+        process.stdout.write(chalk.red("Plan not found.\n"));
+        break;
+      }
+
+      // Execute asynchronously and render events
+      executePlanAsync(target.id, state);
+      break;
+    }
+
+    default:
+      process.stdout.write(
+        chalk.bold("Plan commands:\n") +
+          "  /plan             Enter plan mode (alias: /plan on)\n" +
+          "  /plan off         Exit plan mode\n" +
+          "  /plan status      Show plan mode status\n" +
+          "  /plan show        Show pending plans\n" +
+          "  /plan approve     Approve latest plan (or /plan approve <planId> [actionId])\n" +
+          "  /plan reject      Reject latest plan (or /plan reject <planId> [actionId])\n" +
+          "  /plan execute     Execute latest approved plan\n",
+      );
+      break;
+  }
+}
+
+function renderPlan(plan: Plan): void {
+  const statusColor =
+    plan.status === "approved"
+      ? chalk.green
+      : plan.status === "rejected"
+        ? chalk.red
+        : plan.status === "partial"
+          ? chalk.yellow
+          : chalk.dim;
+
+  process.stdout.write(
+    "\n" +
+      chalk.bold("Plan ") +
+      chalk.dim(plan.id.slice(0, 8)) +
+      " " +
+      statusColor(`[${plan.status}]`) +
+      chalk.dim(` — ${plan.summary}`) +
+      "\n",
+  );
+
+  for (let i = 0; i < plan.actions.length; i++) {
+    const action = plan.actions[i];
+    const actionStatus =
+      action.status === "approved" || action.status === "executed"
+        ? chalk.green("✓")
+        : action.status === "rejected"
+          ? chalk.red("✗")
+          : chalk.dim("○");
+
+    process.stdout.write(
+      `  ${actionStatus} ${i + 1}. ` +
+        chalk.cyan(action.toolName) +
+        chalk.dim(` — ${truncate(action.description, 60)}`) +
+        chalk.dim(` [${action.id.slice(0, 8)}]`) +
+        "\n",
+    );
+  }
+}
+
+async function executePlanAsync(planId: string, state: ReplState): Promise<void> {
+  const executor = state.engine.getPlanExecutor();
+
+  process.stdout.write(chalk.magenta.bold("\nExecuting plan...\n"));
+
+  try {
+    for await (const event of executor.executePlan(planId, state.engine)) {
+      renderEvent(event, state);
+    }
+    process.stdout.write(chalk.green.bold("Plan execution complete.\n"));
+  } catch (err) {
+    process.stdout.write(
+      chalk.red("Plan execution error: " + (err instanceof Error ? err.message : String(err))) +
+        "\n",
+    );
   }
 }
 

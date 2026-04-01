@@ -355,6 +355,8 @@ export type EngineEvent =
   | { type: "tool_progress"; toolUseId: string; progress: ToolProgress }
   | { type: "tool_end"; toolUseId: string; result: string; isError: boolean }
   | { type: "permission_request"; toolName: string; input: Record<string, unknown>; resolve: (decision: PermissionDecision) => void }
+  | { type: "plan_action_intercepted"; toolName: string; toolUseId: string; input: Record<string, unknown>; description: string }
+  | { type: "plan_created"; planId: string; summary: string; actionCount: number }
   | { type: "turn_end"; stopReason: StopReason; usage: TokenUsage }
   | { type: "error"; error: Error }
   | { type: "done"; totalUsage: TokenUsage };

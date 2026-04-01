@@ -21,6 +21,8 @@ import type {
   ToolUseBlock,
 } from "../types/index.js";
 import { ContextCompressor } from "./context-compressor.js";
+import { PlanExecutor } from "./plan-mode.js";
+import type { Plan } from "./plan-mode.js";
 import { ToolExecutor } from "./tool-executor.js";
 
 /**
@@ -50,6 +52,8 @@ export class NexusEngine extends EventEmitter<{
   };
   private abortController: AbortController = new AbortController();
   private compressor: ContextCompressor;
+  private planMode = false;
+  private planExecutor: PlanExecutor = new PlanExecutor();
 
   constructor(
     provider: LLMProvider,
@@ -77,6 +81,26 @@ export class NexusEngine extends EventEmitter<{
 
   getTools(): Tool[] {
     return Array.from(this.tools.values());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plan Mode
+  // ---------------------------------------------------------------------------
+
+  enterPlanMode(): void {
+    this.planMode = true;
+  }
+
+  exitPlanMode(): void {
+    this.planMode = false;
+  }
+
+  isPlanMode(): boolean {
+    return this.planMode;
+  }
+
+  getPlanExecutor(): PlanExecutor {
+    return this.planExecutor;
   }
 
   // ---------------------------------------------------------------------------
@@ -278,137 +302,229 @@ export class NexusEngine extends EventEmitter<{
 
     const results: ToolResultBlock[] = [];
 
-    // Partition into concurrent batches (pattern from Claude Code)
+    // In plan mode, intercept write tools and collect them into a plan
+    if (this.planMode) {
+      const interceptedActions: Array<{
+        toolName: string;
+        input: Record<string, unknown>;
+        description: string;
+      }> = [];
+
+      for (const block of toolUseBlocks) {
+        const tool = this.tools.get(block.name);
+        if (!tool) {
+          results.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `Error: Unknown tool "${block.name}"`,
+            is_error: true,
+          });
+          continue;
+        }
+
+        if (this.planExecutor.shouldIntercept(tool, block.input)) {
+          // Intercept write tool — queue it for the plan
+          const description = tool.renderToolUse
+            ? tool.renderToolUse(block.input)
+            : `${block.name}(${JSON.stringify(block.input).slice(0, 100)})`;
+
+          interceptedActions.push({
+            toolName: block.name,
+            input: block.input,
+            description,
+          });
+
+          yield {
+            type: "plan_action_intercepted",
+            toolName: block.name,
+            toolUseId: block.id,
+            input: block.input,
+            description,
+          };
+
+          results.push({
+            type: "tool_result",
+            tool_use_id: block.id,
+            content: `[Plan mode] Action queued: ${description}. This will be executed after you approve the plan.`,
+          });
+        } else {
+          // Read-only tool — execute normally
+          const toolResults = yield* this.executeSingleTool(block, tool, signal);
+          results.push(toolResults);
+        }
+      }
+
+      // If we intercepted any actions, create a plan
+      if (interceptedActions.length > 0) {
+        const plan = this.planExecutor.createPlan(
+          interceptedActions,
+          `Plan with ${interceptedActions.length} action${interceptedActions.length === 1 ? "" : "s"}`,
+        );
+
+        yield {
+          type: "plan_created",
+          planId: plan.id,
+          summary: plan.summary,
+          actionCount: plan.actions.length,
+        };
+      }
+
+      return results;
+    }
+
+    // Normal mode: partition into concurrent batches
     const batches = this.partitionToolCalls(toolUseBlocks);
 
     for (const batch of batches) {
       if (signal.aborted) break;
 
-      const batchPromises = batch.map(async (block) => {
+      const batchPromises = batch.map((block) => {
         const tool = this.tools.get(block.name);
         if (!tool) {
-          return {
+          return Promise.resolve({
             type: "tool_result" as const,
             tool_use_id: block.id,
             content: `Error: Unknown tool "${block.name}"`,
             is_error: true,
-          };
-        }
-
-        // Check permissions
-        const decision = await this.checkToolPermission(tool, block.input);
-
-        if (decision.behavior === "deny") {
-          this.emit("event", {
-            type: "tool_end",
-            toolUseId: block.id,
-            result: `Permission denied: ${decision.reason}`,
-            isError: true,
           });
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: `Permission denied: ${decision.reason}`,
-            is_error: true,
-          };
         }
-
-        if (decision.behavior === "ask") {
-          // Emit permission request and wait for resolution
-          const resolvedDecision = await new Promise<PermissionDecision>(
-            (resolve) => {
-              this.emit("event", {
-                type: "permission_request",
-                toolName: block.name,
-                input: block.input,
-                resolve,
-              });
-            },
-          );
-
-          if (resolvedDecision.behavior !== "allow") {
-            return {
-              type: "tool_result" as const,
-              tool_use_id: block.id,
-              content: "Permission denied by user",
-              is_error: true,
-            };
-          }
-        }
-
-        // Execute tool
-        const context: ToolContext = {
-          workingDirectory: this.config.workingDirectory,
-          abortSignal: signal,
-          permissions: this.permissions,
-          config: this.config,
-          onProgress: (progress) => {
-            this.emit("event", {
-              type: "tool_progress",
-              toolUseId: block.id,
-              progress,
-            });
-          },
-        };
-
-        try {
-          const parseResult = tool.inputSchema.safeParse(block.input);
-          if (!parseResult.success) {
-            throw new Error(
-              `Invalid input: ${parseResult.error.message}`,
-            );
-          }
-
-          const result = await tool.execute(parseResult.data, context);
-          const resultStr =
-            typeof result.data === "string"
-              ? result.data
-              : JSON.stringify(result.data, null, 2);
-
-          // Truncate large results
-          const maxSize = tool.maxResultSize ?? 100_000;
-          const truncated =
-            resultStr.length > maxSize
-              ? `${resultStr.slice(0, maxSize)}\n\n[Result truncated — ${resultStr.length} chars total]`
-              : resultStr;
-
-          this.emit("event", {
-            type: "tool_end",
-            toolUseId: block.id,
-            result: truncated,
-            isError: false,
-          });
-
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: truncated,
-          };
-        } catch (err) {
-          const errorMsg =
-            err instanceof Error ? err.message : String(err);
-          this.emit("event", {
-            type: "tool_end",
-            toolUseId: block.id,
-            result: errorMsg,
-            isError: true,
-          });
-          return {
-            type: "tool_result" as const,
-            tool_use_id: block.id,
-            content: `Error: ${errorMsg}`,
-            is_error: true,
-          };
-        }
+        return this.executeSingleToolAsync(block, tool, signal);
       });
 
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
-
-      // Yield tool_end events are already emitted inside the promises
     }
 
     return results;
+  }
+
+  /**
+   * Execute a single tool call (used in plan mode for read-only tools).
+   * Yields EngineEvents and returns the ToolResultBlock.
+   */
+  private async *executeSingleTool(
+    block: ToolUseBlock,
+    tool: Tool,
+    signal: AbortSignal,
+  ): AsyncGenerator<EngineEvent, ToolResultBlock> {
+    yield {
+      type: "tool_start",
+      toolName: block.name,
+      toolUseId: block.id,
+      input: block.input,
+    };
+
+    const result = await this.executeSingleToolAsync(block, tool, signal);
+    return result;
+  }
+
+  /**
+   * Execute a single tool call (async, no generator — for use in Promise.all batches).
+   */
+  private async executeSingleToolAsync(
+    block: ToolUseBlock,
+    tool: Tool,
+    signal: AbortSignal,
+  ): Promise<ToolResultBlock> {
+    // Check permissions
+    const decision = await this.checkToolPermission(tool, block.input);
+
+    if (decision.behavior === "deny") {
+      this.emit("event", {
+        type: "tool_end",
+        toolUseId: block.id,
+        result: `Permission denied: ${decision.reason}`,
+        isError: true,
+      });
+      return {
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: `Permission denied: ${decision.reason}`,
+        is_error: true,
+      };
+    }
+
+    if (decision.behavior === "ask") {
+      const resolvedDecision = await new Promise<PermissionDecision>(
+        (resolve) => {
+          this.emit("event", {
+            type: "permission_request",
+            toolName: block.name,
+            input: block.input,
+            resolve,
+          });
+        },
+      );
+
+      if (resolvedDecision.behavior !== "allow") {
+        return {
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: "Permission denied by user",
+          is_error: true,
+        };
+      }
+    }
+
+    const context: ToolContext = {
+      workingDirectory: this.config.workingDirectory,
+      abortSignal: signal,
+      permissions: this.permissions,
+      config: this.config,
+      onProgress: (progress) => {
+        this.emit("event", {
+          type: "tool_progress",
+          toolUseId: block.id,
+          progress,
+        });
+      },
+    };
+
+    try {
+      const parseResult = tool.inputSchema.safeParse(block.input);
+      if (!parseResult.success) {
+        throw new Error(`Invalid input: ${parseResult.error.message}`);
+      }
+
+      const result = await tool.execute(parseResult.data, context);
+      const resultStr =
+        typeof result.data === "string"
+          ? result.data
+          : JSON.stringify(result.data, null, 2);
+
+      const maxSize = tool.maxResultSize ?? 100_000;
+      const truncated =
+        resultStr.length > maxSize
+          ? `${resultStr.slice(0, maxSize)}\n\n[Result truncated — ${resultStr.length} chars total]`
+          : resultStr;
+
+      this.emit("event", {
+        type: "tool_end",
+        toolUseId: block.id,
+        result: truncated,
+        isError: false,
+      });
+
+      return {
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: truncated,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.emit("event", {
+        type: "tool_end",
+        toolUseId: block.id,
+        result: errorMsg,
+        isError: true,
+      });
+      return {
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: `Error: ${errorMsg}`,
+        is_error: true,
+      };
+    }
   }
 
   // ---------------------------------------------------------------------------

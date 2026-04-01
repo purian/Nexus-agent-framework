@@ -1402,4 +1402,210 @@ describe("NexusEngine", () => {
       expect(capturedTools).toBeUndefined();
     });
   });
+
+  // --------------------------------------------------------------------------
+  // Plan Mode
+  // --------------------------------------------------------------------------
+
+  describe("plan mode", () => {
+    it("should toggle plan mode on and off", () => {
+      const provider = createMockProvider([]);
+      const engine = new NexusEngine(provider, config, permissions);
+
+      expect(engine.isPlanMode()).toBe(false);
+      engine.enterPlanMode();
+      expect(engine.isPlanMode()).toBe(true);
+      engine.exitPlanMode();
+      expect(engine.isPlanMode()).toBe(false);
+    });
+
+    it("should expose the PlanExecutor", () => {
+      const provider = createMockProvider([]);
+      const engine = new NexusEngine(provider, config, permissions);
+      const executor = engine.getPlanExecutor();
+      expect(executor).toBeDefined();
+      expect(executor.getPlans()).toEqual([]);
+    });
+
+    it("should intercept write tools in plan mode and create a plan", async () => {
+      const writeTool = createMockTool("write_file", { readOnly: false });
+      const provider = createMockProvider([
+        toolUseResponse([
+          { id: "tu-1", name: "write_file", input: { path: "/tmp/a.txt", content: "hello" } },
+        ]),
+        textResponse("I've queued the write for your approval."),
+      ]);
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.registerTool(writeTool);
+      engine.enterPlanMode();
+
+      const events = await collectEvents(engine.run("Write a file"));
+
+      // Should have plan_action_intercepted and plan_created events
+      const intercepted = events.filter((e) => e.type === "plan_action_intercepted");
+      expect(intercepted).toHaveLength(1);
+      expect(intercepted[0].type === "plan_action_intercepted" && intercepted[0].toolName).toBe("write_file");
+
+      const planCreated = events.filter((e) => e.type === "plan_created");
+      expect(planCreated).toHaveLength(1);
+      expect(planCreated[0].type === "plan_created" && planCreated[0].actionCount).toBe(1);
+
+      // The write tool should NOT have been executed
+      // (it returns "write_file executed" normally, but in plan mode it should be queued)
+      const toolResults = engine.getMessages().filter(
+        (m) => m.role === "user" && m.content.some((b) => b.type === "tool_result"),
+      );
+      expect(toolResults.length).toBeGreaterThan(0);
+      const resultBlock = toolResults[0].content.find(
+        (b) => b.type === "tool_result",
+      );
+      expect(resultBlock?.type === "tool_result" && (resultBlock.content as string)).toContain("[Plan mode]");
+
+      // Plan executor should have 1 pending plan
+      const plans = engine.getPlanExecutor().getPlans();
+      expect(plans).toHaveLength(1);
+      expect(plans[0].status).toBe("pending");
+      expect(plans[0].actions).toHaveLength(1);
+    });
+
+    it("should allow read-only tools to execute normally in plan mode", async () => {
+      const readTool = createMockTool("read_file", {
+        readOnly: true,
+        execute: async () => ({ data: "file contents here" }),
+      });
+      const provider = createMockProvider([
+        toolUseResponse([
+          { id: "tu-1", name: "read_file", input: { path: "/tmp/a.txt" } },
+        ]),
+        textResponse("Here's the file contents."),
+      ]);
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.registerTool(readTool);
+      engine.enterPlanMode();
+
+      const events = await collectEvents(engine.run("Read a file"));
+
+      // Should NOT have plan_action_intercepted
+      const intercepted = events.filter((e) => e.type === "plan_action_intercepted");
+      expect(intercepted).toHaveLength(0);
+
+      // Should NOT create a plan
+      const planCreated = events.filter((e) => e.type === "plan_created");
+      expect(planCreated).toHaveLength(0);
+
+      // The tool result should contain actual output
+      const toolResults = engine.getMessages().filter(
+        (m) => m.role === "user" && m.content.some((b) => b.type === "tool_result"),
+      );
+      expect(toolResults.length).toBeGreaterThan(0);
+      const resultBlock = toolResults[0].content.find(
+        (b) => b.type === "tool_result",
+      );
+      expect(resultBlock?.type === "tool_result" && (resultBlock.content as string)).toContain("file contents here");
+    });
+
+    it("should intercept writes but execute reads in a mixed tool call", async () => {
+      const readTool = createMockTool("read_file", {
+        readOnly: true,
+        execute: async () => ({ data: "contents" }),
+      });
+      const writeTool = createMockTool("write_file", {
+        readOnly: false,
+        execute: async () => ({ data: "written" }),
+      });
+      const provider = createMockProvider([
+        toolUseResponse([
+          { id: "tu-1", name: "read_file", input: { path: "/tmp/a.txt" } },
+          { id: "tu-2", name: "write_file", input: { path: "/tmp/b.txt", content: "hi" } },
+        ]),
+        textResponse("Done."),
+      ]);
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.registerTool(readTool);
+      engine.registerTool(writeTool);
+      engine.enterPlanMode();
+
+      const events = await collectEvents(engine.run("Read and write"));
+
+      // Only the write should be intercepted
+      const intercepted = events.filter((e) => e.type === "plan_action_intercepted");
+      expect(intercepted).toHaveLength(1);
+      expect(intercepted[0].type === "plan_action_intercepted" && intercepted[0].toolName).toBe("write_file");
+
+      // A plan should have been created with 1 action
+      const planCreated = events.filter((e) => e.type === "plan_created");
+      expect(planCreated).toHaveLength(1);
+      expect(planCreated[0].type === "plan_created" && planCreated[0].actionCount).toBe(1);
+
+      // Both tool results should exist
+      const toolResultMsg = engine.getMessages().find(
+        (m) => m.role === "user" && m.content.some((b) => b.type === "tool_result"),
+      );
+      expect(toolResultMsg).toBeDefined();
+      const results = toolResultMsg!.content.filter((b) => b.type === "tool_result");
+      expect(results).toHaveLength(2);
+    });
+
+    it("should not intercept tools when plan mode is off", async () => {
+      const writeTool = createMockTool("write_file", {
+        readOnly: false,
+        execute: async () => ({ data: "written successfully" }),
+      });
+      const provider = createMockProvider([
+        toolUseResponse([
+          { id: "tu-1", name: "write_file", input: { path: "/tmp/a.txt", content: "hi" } },
+        ]),
+        textResponse("File written."),
+      ]);
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.registerTool(writeTool);
+      // Plan mode is OFF by default
+
+      const events = await collectEvents(engine.run("Write a file"));
+
+      // Should NOT have plan events
+      const intercepted = events.filter((e) => e.type === "plan_action_intercepted");
+      expect(intercepted).toHaveLength(0);
+      const planCreated = events.filter((e) => e.type === "plan_created");
+      expect(planCreated).toHaveLength(0);
+
+      // Tool should have executed normally
+      const toolResults = engine.getMessages().filter(
+        (m) => m.role === "user" && m.content.some((b) => b.type === "tool_result"),
+      );
+      const resultBlock = toolResults[0].content.find((b) => b.type === "tool_result");
+      expect(resultBlock?.type === "tool_result" && (resultBlock.content as string)).toContain("written successfully");
+    });
+
+    it("should handle multiple write tools in a single turn, creating one plan", async () => {
+      const writeTool = createMockTool("write_file", { readOnly: false });
+      const bashTool = createMockTool("bash", { readOnly: false, concurrencySafe: false });
+
+      const provider = createMockProvider([
+        toolUseResponse([
+          { id: "tu-1", name: "write_file", input: { path: "/a.txt", content: "a" } },
+          { id: "tu-2", name: "bash", input: { command: "rm /tmp/old" } },
+          { id: "tu-3", name: "write_file", input: { path: "/b.txt", content: "b" } },
+        ]),
+        textResponse("Queued 3 actions."),
+      ]);
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.registerTool(writeTool);
+      engine.registerTool(bashTool);
+      engine.enterPlanMode();
+
+      const events = await collectEvents(engine.run("Write files and run command"));
+
+      const intercepted = events.filter((e) => e.type === "plan_action_intercepted");
+      expect(intercepted).toHaveLength(3);
+
+      const planCreated = events.filter((e) => e.type === "plan_created");
+      expect(planCreated).toHaveLength(1);
+      expect(planCreated[0].type === "plan_created" && planCreated[0].actionCount).toBe(3);
+
+      const plans = engine.getPlanExecutor().getPlans();
+      expect(plans).toHaveLength(1);
+      expect(plans[0].actions).toHaveLength(3);
+    });
+  });
 });
