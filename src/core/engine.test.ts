@@ -1607,5 +1607,54 @@ describe("NexusEngine", () => {
       expect(plans).toHaveLength(1);
       expect(plans[0].actions).toHaveLength(3);
     });
+
+    it("should include plan mode instructions in system prompt when active", async () => {
+      let capturedSystemPrompt: string | undefined;
+      const provider: LLMProvider = {
+        name: "spy-provider",
+        async *chat(request, _signal) {
+          capturedSystemPrompt = request.systemPrompt;
+          yield { type: "message_start", messageId: "msg-1" };
+          yield { type: "text_delta", text: "Ok" };
+          yield {
+            type: "message_end",
+            stopReason: "end_turn" as const,
+            usage: { inputTokens: 10, outputTokens: 5 },
+          };
+        },
+      };
+      const engine = new NexusEngine(provider, config, permissions);
+      engine.enterPlanMode();
+
+      await collectEvents(engine.run("Hello"));
+
+      expect(capturedSystemPrompt).toBeDefined();
+      expect(capturedSystemPrompt).toContain("Plan Mode Active");
+      expect(capturedSystemPrompt).toContain("queued into a plan");
+    });
+
+    it("should not include plan mode instructions when plan mode is off", async () => {
+      let capturedSystemPrompt: string | undefined;
+      const provider: LLMProvider = {
+        name: "spy-provider",
+        async *chat(request, _signal) {
+          capturedSystemPrompt = request.systemPrompt;
+          yield { type: "message_start", messageId: "msg-1" };
+          yield { type: "text_delta", text: "Ok" };
+          yield {
+            type: "message_end",
+            stopReason: "end_turn" as const,
+            usage: { inputTokens: 10, outputTokens: 5 },
+          };
+        },
+      };
+      const engine = new NexusEngine(provider, config, permissions);
+      // Plan mode is OFF by default
+
+      await collectEvents(engine.run("Hello"));
+
+      expect(capturedSystemPrompt).toBeDefined();
+      expect(capturedSystemPrompt).not.toContain("Plan Mode Active");
+    });
   });
 });

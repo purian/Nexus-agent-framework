@@ -104,3 +104,12 @@ export { createPlatform } from "./platforms/index.js";
 
 // Config
 export { loadConfig } from "./config/index.js";
+
+// Self-Hosting
+export {
+  findNexusRoot,
+  buildSelfHostSystemPrompt,
+  getSelfHostPermissionRules,
+  buildSelfHostConfig,
+} from "./selfhost/index.js";
+export type { SelfHostOptions } from "./selfhost/index.js";

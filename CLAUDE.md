@@ -3,7 +3,7 @@
 ## Project Overview
 Nexus is an open-source, MCP-native personal AI agent framework. Secure, composable, multi-agent.
 - **Repo**: https://github.com/purian/Nexus-agent-framework
-- **Current version**: 0.6.0
+- **Current version**: 0.8.0
 - **Stack**: TypeScript, Node 20+, Zod, SQLite, MCP SDK
 
 ## Commands
@@ -11,7 +11,7 @@ Nexus is an open-source, MCP-native personal AI agent framework. Secure, composa
 npm run dev          # Watch mode
 npm run build        # Production build (tsup)
 npm run typecheck    # TypeScript check
-npm test             # Run all 459 tests (vitest)
+npm test             # Run all 498 tests (vitest)
 npm run test:watch   # Watch mode tests
 ```
 
@@ -26,11 +26,12 @@ npm run test:watch   # Watch mode tests
 - `src/skills/` — Reusable workflow system (.nexus/skills/*.md)
 - `src/platforms/` — Telegram, Discord, Slack, Webhook adapters
 - `src/plugins/` — Dynamic plugin loader
+- `src/selfhost/` — Self-hosting (Nexus developing itself via `nexus develop`)
 - `src/cli/` — Commander.js CLI with REPL
 - `src/config/` — Multi-source config (defaults → user → project → env → CLI)
 
 ## Development Rules
-- **No regressions**: Run `npm test` before every commit. All 459+ tests must pass.
+- **No regressions**: Run `npm test` before every commit. All 498+ tests must pass.
 - **Version bumps**: Update package.json, src/cli/index.ts (VERSION const), and CHANGELOG.md
 - **Changelog**: Follow Keep a Changelog format. Update for every release.
 - **Commits**: Descriptive messages. Include "Co-Authored-By: Claude" line.

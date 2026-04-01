@@ -225,4 +225,48 @@ describe("PlanExecutor", () => {
       expect(plan.status).toBe("pending");
     });
   });
+
+  // --------------------------------------------------------------------------
+  // shouldIntercept
+  // --------------------------------------------------------------------------
+
+  describe("shouldIntercept", () => {
+    it("intercepts write tools (isReadOnly returns false)", () => {
+      const writeTool = { isReadOnly: () => false } as any;
+      expect(executor.shouldIntercept(writeTool, {})).toBe(true);
+    });
+
+    it("does not intercept read-only tools", () => {
+      const readTool = { isReadOnly: () => true } as any;
+      expect(executor.shouldIntercept(readTool, {})).toBe(false);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // approvePlan does not change already-rejected actions
+  // --------------------------------------------------------------------------
+
+  describe("approve/reject idempotency", () => {
+    it("approvePlan does not change already-rejected actions", () => {
+      const plan = executor.createPlan(sampleActions(), "Test");
+      executor.rejectAction(plan.id, plan.actions[0].id);
+      executor.approvePlan(plan.id);
+
+      // First action was explicitly rejected — approvePlan only touches pending
+      expect(plan.actions[0].status).toBe("rejected");
+      expect(plan.actions[1].status).toBe("approved");
+      expect(plan.actions[2].status).toBe("approved");
+    });
+
+    it("rejectPlan does not change already-approved actions", () => {
+      const plan = executor.createPlan(sampleActions(), "Test");
+      executor.approveAction(plan.id, plan.actions[0].id);
+      executor.rejectPlan(plan.id);
+
+      // First action was explicitly approved — rejectPlan only touches pending
+      expect(plan.actions[0].status).toBe("approved");
+      expect(plan.actions[1].status).toBe("rejected");
+      expect(plan.actions[2].status).toBe("rejected");
+    });
+  });
 });

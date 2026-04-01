@@ -18,7 +18,7 @@ import type {
 // Version & Program Setup
 // ============================================================================
 
-const VERSION = "0.6.0";
+const VERSION = "0.8.0";
 
 const program = new Command()
   .name("nexus")
@@ -37,7 +37,8 @@ program
     "--permission-mode <mode>",
     "Permission mode: default, allowAll, denyAll, plan",
   )
-  .option("--max-budget <usd>", "Max budget in USD for the session", parseFloat);
+  .option("--max-budget <usd>", "Max budget in USD for the session", parseFloat)
+  .option("--plan", "Enable plan mode (write actions require approval before execution)");
 
 // ============================================================================
 // Helpers: Build runtime objects from config
@@ -242,6 +243,11 @@ program
     const opts = cmd.optsWithGlobals();
     const config = buildConfig(opts);
     const engine = await createEngine(config);
+
+    if (opts.plan) {
+      engine.enterPlanMode();
+    }
+
     await startRepl(engine);
   });
 
@@ -256,6 +262,10 @@ program
     const opts = cmd.optsWithGlobals();
     const config = buildConfig(opts);
     const engine = await createEngine(config);
+
+    if (opts.plan) {
+      engine.enterPlanMode();
+    }
 
     // Wire up permission handler for single-shot (auto-deny by default)
     engine.on("event", (event) => {
@@ -293,6 +303,22 @@ program
               process.stderr.write(chalk.red(`  Error: ${event.result}`) + "\n");
             }
             break;
+          case "plan_action_intercepted":
+            process.stderr.write(
+              chalk.magenta(`[Plan] Queued: ${event.toolName}`) +
+                chalk.dim(` — ${event.description}`) +
+                "\n",
+            );
+            break;
+          case "plan_created":
+            process.stderr.write(
+              chalk.magenta.bold(`\nPlan created`) +
+                chalk.dim(` (${event.actionCount} action${event.actionCount === 1 ? "" : "s"})`) +
+                "\n" +
+                chalk.dim("Use interactive mode (nexus --plan) to review and execute plans.") +
+                "\n",
+            );
+            break;
           case "error":
             process.stderr.write(chalk.red(`Error: ${event.error.message}`) + "\n");
             break;
@@ -312,6 +338,156 @@ program
         ) + "\n",
       );
       process.exit(1);
+    }
+  });
+
+// ============================================================================
+// Command: develop (self-hosting / dogfooding)
+// ============================================================================
+
+program
+  .command("develop [prompt]")
+  .description("Run Nexus on its own codebase (self-hosting / dogfooding)")
+  .action(async (prompt: string | undefined, cmdOpts, cmd) => {
+    const opts = { ...cmd.optsWithGlobals(), ...cmdOpts };
+    const baseConfig = buildConfig(opts);
+
+    const {
+      buildSelfHostConfig,
+      buildSelfHostSystemPrompt,
+      findNexusRoot,
+    } = await import("../selfhost/index.js");
+
+    const selfHostConfig = buildSelfHostConfig(baseConfig, {
+      provider: opts.provider,
+      model: opts.model,
+      planMode: opts.plan,
+      maxBudgetUsd: opts.maxBudget,
+    });
+
+    const provider = await createProvider(selfHostConfig);
+    const permissions = buildPermissions(selfHostConfig);
+    const engine = new NexusEngine(provider, selfHostConfig, permissions);
+
+    // Register built-in tools
+    try {
+      const { createDefaultTools } = await import("../tools/index.js");
+      for (const tool of createDefaultTools()) {
+        engine.registerTool(tool);
+      }
+    } catch {
+      // Tools module may not exist yet
+    }
+
+    // Register agent tool for spawning sub-agents
+    try {
+      const { AgentCoordinator } = await import("../agents/coordinator.js");
+      const { createAgentTool } = await import("../agents/agent-tool.js");
+      const coordinator = new AgentCoordinator(selfHostConfig, permissions);
+      const { createDefaultTools } = await import("../tools/index.js");
+      for (const tool of createDefaultTools()) {
+        coordinator.registerTool(tool);
+      }
+      engine.registerTool(createAgentTool(coordinator, provider));
+    } catch {
+      // Agent module may not exist yet
+    }
+
+    if (opts.plan) {
+      engine.enterPlanMode();
+    }
+
+    const projectRoot = findNexusRoot();
+    const systemPrompt = buildSelfHostSystemPrompt(projectRoot);
+
+    process.stderr.write(
+      chalk.bold("Nexus Self-Development Mode") +
+        chalk.dim(` v${VERSION}`) +
+        "\n",
+    );
+    process.stderr.write(
+      chalk.dim(`  Project root: ${projectRoot}`) + "\n",
+    );
+    process.stderr.write(
+      chalk.dim(`  Provider: ${selfHostConfig.defaultProvider}`) + "\n",
+    );
+    process.stderr.write(
+      chalk.dim(`  Model: ${selfHostConfig.defaultModel}`) + "\n",
+    );
+    if (opts.plan) {
+      process.stderr.write(
+        chalk.yellow("  Plan mode: enabled (write actions require approval)") +
+          "\n",
+      );
+    }
+    process.stderr.write("\n");
+
+    if (prompt) {
+      // Single-shot mode
+      engine.on("event", (event) => {
+        if (event.type === "permission_request") {
+          if (selfHostConfig.permissionMode === "allowAll" || selfHostConfig.permissionMode === "plan") {
+            event.resolve({ behavior: "allow" });
+          } else {
+            event.resolve({
+              behavior: "deny",
+              reason: "Non-interactive mode; use --permission-mode allowAll",
+            });
+          }
+        }
+      });
+
+      try {
+        const stream = engine.run(prompt, { systemPrompt });
+        for await (const event of stream) {
+          switch (event.type) {
+            case "text":
+              process.stdout.write(event.text);
+              break;
+            case "tool_start":
+              process.stderr.write(
+                chalk.blue(`[Tool: ${event.toolName}]`) + "\n",
+              );
+              break;
+            case "tool_end":
+              if (event.isError) {
+                process.stderr.write(
+                  chalk.red(`  Error: ${event.result}`) + "\n",
+                );
+              }
+              break;
+            case "plan_created":
+              process.stderr.write(
+                chalk.yellow(
+                  `[Plan created: ${event.actionCount} action(s) — ${event.summary}]`,
+                ) + "\n",
+              );
+              break;
+            case "error":
+              process.stderr.write(
+                chalk.red(`Error: ${event.error.message}`) + "\n",
+              );
+              break;
+            case "done":
+              process.stderr.write(
+                chalk.dim(
+                  `\ntokens: ${event.totalUsage.inputTokens} in / ${event.totalUsage.outputTokens} out`,
+                ) + "\n",
+              );
+              break;
+          }
+        }
+      } catch (err) {
+        process.stderr.write(
+          chalk.red(
+            "Fatal: " + (err instanceof Error ? err.message : String(err)),
+          ) + "\n",
+        );
+        process.exit(1);
+      }
+    } else {
+      // Interactive mode — use REPL with self-host system prompt
+      await startRepl(engine, { systemPrompt });
     }
   });
 

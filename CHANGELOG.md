@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-04-01
+
+### Added
+- **Plan Mode: Global `--plan` flag** — `--plan` now works on all commands (default REPL, `run`, `develop`), not just `develop`. Enables plan mode from the CLI for any workflow
+- **Plan Mode: LLM awareness** — When plan mode is active, the system prompt instructs the LLM to explain proposed changes, read first, group related changes, and summarize the plan. Results in much more informative plan proposals
+- **Plan Mode: Diff previews** — `/plan show` now displays inline diff previews for EditFile (red/green old→new), WriteFile (content snippet), and Bash (command preview) actions. Makes plans reviewable at a glance
+- **Plan Mode: `/plan yes` shortcut** — Approve and execute the latest plan in one step, streamlining the most common approval workflow
+- **6 new tests** — System prompt plan mode injection (2), shouldIntercept (2), approve/reject idempotency (2). Total: 498 tests
+
+### Changed
+- `--plan` flag moved from `develop`-only to global options (available on all commands)
+- Plan help text updated with new commands and descriptions
+
+## [0.7.0] - 2026-04-01
+
+### Added
+- **Self-Hosting / Dogfooding** — `nexus develop [prompt]` CLI command for Nexus to develop its own codebase. Architecture-aware system prompt gives the LLM deep knowledge of Nexus internals (engine loop, providers, tools, agents, permissions, memory, skills, MCP). Dev-safe permission rules auto-allow reads, writes, git, tests, and npm scripts while denying destructive ops (`rm -rf`, `git push --force`, `npm publish`). Supports interactive REPL and single-shot modes. Optional `--plan` flag for safer self-modification
+- **Self-Host Config Builder** — `buildSelfHostConfig()` merges base config with self-hosting overrides: auto-detected project root, dev permissions, optional plan mode
+- **33 new tests** — findNexusRoot (2), buildSelfHostSystemPrompt (9), getSelfHostPermissionRules (11), buildSelfHostConfig (9), REPL systemPrompt (2). Total: 492 tests
+
+### Changed
+- REPL now accepts optional `systemPrompt` parameter for custom system prompts
+- Phase 2 of the roadmap is now complete
+
 ## [0.6.0] - 2026-04-01
 
 ### Added

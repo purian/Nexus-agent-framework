@@ -369,16 +369,41 @@ function handlePlanCommand(args: string[], state: ReplState): void {
       break;
     }
 
+    case "yes": {
+      // Shortcut: approve + execute the latest pending plan in one step
+      const pendingPlans = executor.getPlans().filter(
+        (p) => p.status === "pending" || p.status === "partial",
+      );
+      if (pendingPlans.length === 0) {
+        process.stdout.write(chalk.dim("No pending plans.\n"));
+        break;
+      }
+
+      const target = args[1] ? executor.getPlan(args[1]) : pendingPlans[pendingPlans.length - 1];
+      if (!target) {
+        process.stdout.write(chalk.red("Plan not found.\n"));
+        break;
+      }
+
+      executor.approvePlan(target.id);
+      process.stdout.write(
+        chalk.green(`Plan approved (${target.actions.length} actions).`) + "\n",
+      );
+      executePlanAsync(target.id, state);
+      break;
+    }
+
     default:
       process.stdout.write(
         chalk.bold("Plan commands:\n") +
           "  /plan             Enter plan mode (alias: /plan on)\n" +
           "  /plan off         Exit plan mode\n" +
           "  /plan status      Show plan mode status\n" +
-          "  /plan show        Show pending plans\n" +
+          "  /plan show        Show pending plans with previews\n" +
           "  /plan approve     Approve latest plan (or /plan approve <planId> [actionId])\n" +
           "  /plan reject      Reject latest plan (or /plan reject <planId> [actionId])\n" +
-          "  /plan execute     Execute latest approved plan\n",
+          "  /plan execute     Execute latest approved plan\n" +
+          "  /plan yes         Approve and execute latest plan in one step\n",
       );
       break;
   }
@@ -420,6 +445,62 @@ function renderPlan(plan: Plan): void {
         chalk.dim(` [${action.id.slice(0, 8)}]`) +
         "\n",
     );
+
+    // Show diff preview for EditFile actions
+    renderActionPreview(action);
+  }
+}
+
+/**
+ * Render a preview of what an action will do. For EditFile actions,
+ * shows a diff-style old → new view. For WriteFile, shows a snippet
+ * of the content to be written.
+ */
+function renderActionPreview(action: {
+  toolName: string;
+  input: Record<string, unknown>;
+}): void {
+  const input = action.input;
+
+  if (action.toolName === "EditFile" && input.old_string && input.new_string) {
+    const filePath = typeof input.file_path === "string" ? input.file_path : "";
+    const oldStr = String(input.old_string);
+    const newStr = String(input.new_string);
+
+    process.stdout.write(chalk.dim(`     ${filePath}\n`));
+
+    const oldLines = oldStr.split("\n");
+    const newLines = newStr.split("\n");
+    const maxPreviewLines = 8;
+
+    for (let j = 0; j < Math.min(oldLines.length, maxPreviewLines); j++) {
+      process.stdout.write(chalk.red(`     - ${oldLines[j]}`) + "\n");
+    }
+    if (oldLines.length > maxPreviewLines) {
+      process.stdout.write(chalk.dim(`     ... (${oldLines.length - maxPreviewLines} more lines)\n`));
+    }
+
+    for (let j = 0; j < Math.min(newLines.length, maxPreviewLines); j++) {
+      process.stdout.write(chalk.green(`     + ${newLines[j]}`) + "\n");
+    }
+    if (newLines.length > maxPreviewLines) {
+      process.stdout.write(chalk.dim(`     ... (${newLines.length - maxPreviewLines} more lines)\n`));
+    }
+  } else if (action.toolName === "WriteFile" && input.content) {
+    const filePath = typeof input.file_path === "string" ? input.file_path : "";
+    const content = String(input.content);
+    const lines = content.split("\n");
+    const maxPreviewLines = 6;
+
+    process.stdout.write(chalk.dim(`     ${filePath} (new file)\n`));
+    for (let j = 0; j < Math.min(lines.length, maxPreviewLines); j++) {
+      process.stdout.write(chalk.green(`     + ${lines[j]}`) + "\n");
+    }
+    if (lines.length > maxPreviewLines) {
+      process.stdout.write(chalk.dim(`     ... (${lines.length - maxPreviewLines} more lines)\n`));
+    }
+  } else if (action.toolName === "Bash" && input.command) {
+    process.stdout.write(chalk.dim(`     $ ${truncate(String(input.command), 80)}`) + "\n");
   }
 }
 
@@ -449,7 +530,10 @@ async function executePlanAsync(planId: string, state: ReplState): Promise<void>
  * Run the interactive REPL. This function returns a promise that resolves
  * when the user exits (/quit or Ctrl+C).
  */
-export async function startRepl(engine: NexusEngine): Promise<void> {
+export async function startRepl(
+  engine: NexusEngine,
+  options?: { systemPrompt?: string },
+): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -521,7 +605,10 @@ export async function startRepl(engine: NexusEngine): Promise<void> {
     runningAbortController = ac;
 
     try {
-      const stream = engine.run(trimmed, { signal: ac.signal });
+      const stream = engine.run(trimmed, {
+        signal: ac.signal,
+        systemPrompt: options?.systemPrompt,
+      });
       for await (const event of stream) {
         renderEvent(event, state);
       }

@@ -636,6 +636,21 @@ export class NexusEngine extends EventEmitter<{
       );
     }
 
+    if (this.planMode) {
+      parts.push(
+        "\n# Plan Mode Active",
+        "Plan mode is currently enabled. When you use write tools (file writes, edits, bash commands),",
+        "they will NOT execute immediately. Instead, they will be queued into a plan for the user to review.",
+        "Read-only tools (reading files, searching, fetching) still execute normally.",
+        "",
+        "Because your write actions are queued, you should:",
+        "- Clearly explain what changes you are proposing and why",
+        "- Use your read tools first to understand the current state",
+        "- Group related changes together in a single turn when possible",
+        "- After your actions are queued, summarize the plan for the user",
+      );
+    }
+
     // Load project instructions (.nexus/instructions.md)
     const instructions = this.loadProjectInstructions();
     if (instructions) {

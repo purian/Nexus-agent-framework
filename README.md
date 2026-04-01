@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-459%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-498%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 459 tests covering all core modules.
+Nexus has a comprehensive test suite with 498 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -915,7 +915,7 @@ npx vitest run src/permissions/index.test.ts
 | Module | Tests | Description |
 |---|---|---|
 | Permission System | 51 | Modes, rules, priority, pattern matching |
-| Core Engine | 45 | Tool loop, streaming, concurrency, budget, abort |
+| Core Engine | 54 | Tool loop, streaming, concurrency, budget, abort, plan mode |
 | Built-in Tools | 22 | Real filesystem operations in temp directories |
 | Memory System | 57 | SQLite CRUD, FTS5 search, memory tool |
 | Agent Coordinator | 55 | Spawning, messaging, lifecycle management |
@@ -928,7 +928,9 @@ npx vitest run src/permissions/index.test.ts
 | Context Compressor | 13 | Token estimation, compression logic |
 | Skill System | 17 | Frontmatter parsing, arg substitution, tool |
 | Audit Logger | 12 | JSONL logging, scrubbing, truncation |
-| **Total** | **384** | **All passing** |
+| Plan Mode | 23 | Interception, CRUD, status computation, execution |
+| Self-Hosting | 33 | Config, system prompt, permissions, root detection |
+| **Total** | **498** | **All passing** |
 
 ---
 
