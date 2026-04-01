@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-01
+
+### Added
+- **AWS Bedrock Provider** — Full Amazon Bedrock support via the Converse API. Streaming with `ConverseStream`, tool use (parallel calls), system prompts, and `listModels()` with on-demand model filtering. Supports all Bedrock-hosted models (Claude, Llama, Mistral, Titan, etc.). Authentication via AWS credentials (env vars, config files, IAM roles, SSO)
+- **24 new tests** — Bedrock provider (18), convertMessages (6), convertTools (1). Total: 459 tests
+
+### Changed
+- CLI now supports `--provider bedrock` in addition to `anthropic`, `openai`, `ollama`, and `gemini`
+- Exported `BedrockProvider` from main index
+
 ## [0.5.0] - 2026-04-01
 
 ### Added

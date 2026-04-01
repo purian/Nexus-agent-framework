@@ -18,7 +18,7 @@ import type {
 // Version & Program Setup
 // ============================================================================
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const program = new Command()
   .name("nexus")
@@ -107,6 +107,15 @@ async function createProvider(config: NexusConfig): Promise<LLMProvider> {
     try {
       const { GeminiProvider } = await import("../core/providers/gemini.js");
       return new GeminiProvider();
+    } catch (err) {
+      return stubProvider(config.defaultProvider, err);
+    }
+  }
+
+  if (config.defaultProvider === "bedrock") {
+    try {
+      const { BedrockProvider } = await import("../core/providers/bedrock.js");
+      return new BedrockProvider();
     } catch (err) {
       return stubProvider(config.defaultProvider, err);
     }

@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-435%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-459%20passing-brightgreen.svg)]()
 
 ---
 
@@ -358,6 +358,7 @@ Nexus supports multiple LLM providers out of the box, with zero-dependency HTTP 
 | **Anthropic** | Claude Sonnet, Opus, Haiku | `ANTHROPIC_API_KEY` |
 | **OpenAI** | GPT-4o, o1, o3 | `OPENAI_API_KEY` |
 | **Gemini** | Gemini 2.0 Flash, 2.5 Pro | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |
+| **Bedrock** | Claude, Llama, Mistral, Titan (via AWS) | AWS credentials |
 | **Ollama** | Llama, Mistral, Gemma, any local model | Local (no key needed) |
 | **Fallback** | Chain any providers with auto-failover | Programmatic |
 
@@ -369,6 +370,9 @@ nexus --provider openai --model gpt-4o
 
 # Use Google Gemini
 nexus --provider gemini --model gemini-2.5-pro
+
+# Use AWS Bedrock
+nexus --provider bedrock --model anthropic.claude-3-5-sonnet-20241022-v2:0
 
 # Use local Ollama
 nexus --provider ollama --model llama3
@@ -382,11 +386,12 @@ NEXUS_PROVIDER=openai NEXUS_MODEL=gpt-4o nexus
 Chain providers so if one fails, the next is tried automatically:
 
 ```typescript
-import { AnthropicProvider, OpenAIProvider, GeminiProvider, FallbackProvider } from "nexus-agent";
+import { AnthropicProvider, OpenAIProvider, GeminiProvider, BedrockProvider, FallbackProvider } from "nexus-agent";
 
 const provider = new FallbackProvider([
   new AnthropicProvider(),  // Try Anthropic first
-  new GeminiProvider(),      // Fall back to Gemini
+  new BedrockProvider(),     // Fall back to Bedrock
+  new GeminiProvider(),      // Then Gemini
   new OpenAIProvider(),      // Then OpenAI
 ]);
 ```
@@ -873,6 +878,9 @@ const plugins = await loader.loadAll(
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `GOOGLE_API_KEY` | Google Gemini API key | — |
 | `GEMINI_API_KEY` | Google Gemini API key (alternative) | — |
+| `AWS_REGION` | AWS region for Bedrock | `us-east-1` |
+| `AWS_ACCESS_KEY_ID` | AWS access key for Bedrock | — |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for Bedrock | — |
 | `NEXUS_MODEL` | Default LLM model | `claude-sonnet-4-6` |
 | `NEXUS_PROVIDER` | Default LLM provider | `anthropic` |
 | `NEXUS_DATA_DIR` | Data directory for memory, config | `~/.nexus` |
@@ -889,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 384 tests covering all core modules.
+Nexus has a comprehensive test suite with 459 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -914,6 +922,7 @@ npx vitest run src/permissions/index.test.ts
 | Config System | 68 | Defaults, env vars, full precedence chain |
 | OpenAI Provider | 18 | SSE parsing, tool calling, error handling |
 | Gemini Provider | 25 | SSE streaming, function calling, model listing |
+| Bedrock Provider | 24 | ConverseStream, tool use, stop reasons, model listing |
 | Ollama Provider | 17 | Streaming, local connection, model listing |
 | Fallback Provider | 9 | Failover chains, error propagation |
 | Context Compressor | 13 | Token estimation, compression logic |
@@ -938,6 +947,7 @@ nexus/
 │   │       ├── anthropic.ts      # Anthropic LLM provider
 │   │       ├── openai.ts         # OpenAI LLM provider (GPT-4o, o1, o3)
 │   │       ├── gemini.ts         # Google Gemini provider (2.0 Flash, 2.5 Pro)
+│   │       ├── bedrock.ts        # AWS Bedrock provider (Converse API)
 │   │       ├── ollama.ts         # Ollama local model provider
 │   │       └── fallback.ts       # Auto-failover provider chain
 │   │   ├── context-compressor.ts # Auto-summarization for long sessions
