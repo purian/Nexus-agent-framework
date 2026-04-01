@@ -3,7 +3,7 @@
 ## Project Overview
 Nexus is an open-source, MCP-native personal AI agent framework. Secure, composable, multi-agent.
 - **Repo**: https://github.com/purian/Nexus-agent-framework
-- **Current version**: 0.4.0
+- **Current version**: 0.5.0
 - **Stack**: TypeScript, Node 20+, Zod, SQLite, MCP SDK
 
 ## Commands
@@ -11,13 +11,13 @@ Nexus is an open-source, MCP-native personal AI agent framework. Secure, composa
 npm run dev          # Watch mode
 npm run build        # Production build (tsup)
 npm run typecheck    # TypeScript check
-npm test             # Run all 403 tests (vitest)
+npm test             # Run all 435 tests (vitest)
 npm run test:watch   # Watch mode tests
 ```
 
 ## Architecture
 - `src/core/engine.ts` — Main agent loop (LLM → tool execution → feed results → repeat)
-- `src/core/providers/` — LLM providers (Anthropic, OpenAI, Ollama, Fallback)
+- `src/core/providers/` — LLM providers (Anthropic, OpenAI, Gemini, Ollama, Fallback)
 - `src/tools/` — 7 built-in tools (Bash, ReadFile, WriteFile, EditFile, Glob, Grep, WebFetch)
 - `src/permissions/` — Fine-grained per-tool permission system
 - `src/mcp/` — MCP client (consume tools) and server (expose tools)
@@ -30,7 +30,7 @@ npm run test:watch   # Watch mode tests
 - `src/config/` — Multi-source config (defaults → user → project → env → CLI)
 
 ## Development Rules
-- **No regressions**: Run `npm test` before every commit. All 403+ tests must pass.
+- **No regressions**: Run `npm test` before every commit. All 435+ tests must pass.
 - **Version bumps**: Update package.json, src/cli/index.ts (VERSION const), and CHANGELOG.md
 - **Changelog**: Follow Keep a Changelog format. Update for every release.
 - **Commits**: Descriptive messages. Include "Co-Authored-By: Claude" line.

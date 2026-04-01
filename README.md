@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-403%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-435%20passing-brightgreen.svg)]()
 
 ---
 
@@ -357,6 +357,7 @@ Nexus supports multiple LLM providers out of the box, with zero-dependency HTTP 
 |---|---|---|
 | **Anthropic** | Claude Sonnet, Opus, Haiku | `ANTHROPIC_API_KEY` |
 | **OpenAI** | GPT-4o, o1, o3 | `OPENAI_API_KEY` |
+| **Gemini** | Gemini 2.0 Flash, 2.5 Pro | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |
 | **Ollama** | Llama, Mistral, Gemma, any local model | Local (no key needed) |
 | **Fallback** | Chain any providers with auto-failover | Programmatic |
 
@@ -365,6 +366,9 @@ Nexus supports multiple LLM providers out of the box, with zero-dependency HTTP 
 ```bash
 # Use OpenAI
 nexus --provider openai --model gpt-4o
+
+# Use Google Gemini
+nexus --provider gemini --model gemini-2.5-pro
 
 # Use local Ollama
 nexus --provider ollama --model llama3
@@ -378,11 +382,12 @@ NEXUS_PROVIDER=openai NEXUS_MODEL=gpt-4o nexus
 Chain providers so if one fails, the next is tried automatically:
 
 ```typescript
-import { AnthropicProvider, OpenAIProvider, FallbackProvider } from "nexus-agent";
+import { AnthropicProvider, OpenAIProvider, GeminiProvider, FallbackProvider } from "nexus-agent";
 
 const provider = new FallbackProvider([
   new AnthropicProvider(),  // Try Anthropic first
-  new OpenAIProvider(),      // Fall back to OpenAI
+  new GeminiProvider(),      // Fall back to Gemini
+  new OpenAIProvider(),      // Then OpenAI
 ]);
 ```
 
@@ -865,7 +870,9 @@ const plugins = await loader.loadAll(
 | Variable | Description | Default |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
-| `OPENAI_API_KEY` | OpenAI API key (for future providers) | — |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `GOOGLE_API_KEY` | Google Gemini API key | — |
+| `GEMINI_API_KEY` | Google Gemini API key (alternative) | — |
 | `NEXUS_MODEL` | Default LLM model | `claude-sonnet-4-6` |
 | `NEXUS_PROVIDER` | Default LLM provider | `anthropic` |
 | `NEXUS_DATA_DIR` | Data directory for memory, config | `~/.nexus` |
@@ -906,6 +913,7 @@ npx vitest run src/permissions/index.test.ts
 | Agent Coordinator | 55 | Spawning, messaging, lifecycle management |
 | Config System | 68 | Defaults, env vars, full precedence chain |
 | OpenAI Provider | 18 | SSE parsing, tool calling, error handling |
+| Gemini Provider | 25 | SSE streaming, function calling, model listing |
 | Ollama Provider | 17 | Streaming, local connection, model listing |
 | Fallback Provider | 9 | Failover chains, error propagation |
 | Context Compressor | 13 | Token estimation, compression logic |
@@ -929,6 +937,7 @@ nexus/
 │   │   └── providers/
 │   │       ├── anthropic.ts      # Anthropic LLM provider
 │   │       ├── openai.ts         # OpenAI LLM provider (GPT-4o, o1, o3)
+│   │       ├── gemini.ts         # Google Gemini provider (2.0 Flash, 2.5 Pro)
 │   │       ├── ollama.ts         # Ollama local model provider
 │   │       └── fallback.ts       # Auto-failover provider chain
 │   │   ├── context-compressor.ts # Auto-summarization for long sessions

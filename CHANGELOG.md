@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-01
+
+### Added
+- **Google Gemini Provider** — Full Gemini API support (Gemini 2.0 Flash, 2.5 Pro, etc.) via native fetch (no SDK dependency). SSE streaming, function calling, system instructions, `listModels()` with generation method filtering. Supports `GOOGLE_API_KEY` and `GEMINI_API_KEY` env vars, custom base URLs for Vertex AI
+- **25 new tests** — Gemini provider (18), convertMessages (6), convertTools (1). Total: 435 tests
+
+### Changed
+- CLI now supports `--provider gemini` in addition to `anthropic`, `openai`, and `ollama`
+- Exported `GeminiProvider` from main index
+
 ## [0.4.0] - 2026-04-01
 
 ### Added

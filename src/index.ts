@@ -11,6 +11,7 @@ export { NexusEngine } from "./core/engine.js";
 export { AnthropicProvider } from "./core/providers/anthropic.js";
 export { OpenAIProvider } from "./core/providers/openai.js";
 export { OllamaProvider } from "./core/providers/ollama.js";
+export { GeminiProvider } from "./core/providers/gemini.js";
 export { FallbackProvider } from "./core/providers/fallback.js";
 export { AuditLogger } from "./core/audit-logger.js";
 export { ContextCompressor } from "./core/context-compressor.js";
