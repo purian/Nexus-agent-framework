@@ -92,6 +92,16 @@ export { MCPServer } from "./mcp/server.js";
 
 // Agents
 export { AgentCoordinator } from "./agents/coordinator.js";
+export { AgentDefinitionLoader } from "./agents/definitions.js";
+export type { AgentDefinition } from "./agents/definitions.js";
+export { WorktreeManager } from "./agents/worktree.js";
+export type { WorktreeInfo } from "./agents/worktree.js";
+export { BackgroundAgentManager } from "./agents/background.js";
+export type {
+  BackgroundAgentStatus,
+  BackgroundAgentInfo,
+  BackgroundAgentNotification,
+} from "./agents/background.js";
 
 // Memory
 export { MemoryManager } from "./memory/index.js";

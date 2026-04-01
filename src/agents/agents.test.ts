@@ -174,17 +174,17 @@ describe("AgentCoordinator", () => {
   // --------------------------------------------------------------------------
 
   describe("spawnAgent", () => {
-    it("creates an agent and returns its ID", () => {
+    it("creates an agent and returns its ID", async () => {
       const agentConfig = createAgentConfig({ id: "agent-abc" });
-      const id = coordinator.spawnAgent(agentConfig, provider);
+      const id = await coordinator.spawnAgent(agentConfig, provider);
 
       expect(id).toBe("agent-abc");
     });
 
-    it("generates a UUID when no id is provided in config", () => {
+    it("generates a UUID when no id is provided in config", async () => {
       const agentConfig = createAgentConfig({ id: undefined as unknown as string });
       // When id is falsy, the coordinator uses uuid()
-      const id = coordinator.spawnAgent(
+      const id = await coordinator.spawnAgent(
         { ...agentConfig, id: "" } as unknown as AgentConfig,
         provider,
       );

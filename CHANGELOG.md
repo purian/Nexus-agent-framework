@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-01
+
+### Added
+- **Agent Definitions** — Custom agent types loaded from `.nexus/agents/*.md` files. Each definition specifies a name, description, system prompt, allowed tools, model override, max turns, and temperature. Project-level definitions override global ones. Integrated into AgentCoordinator (`spawnAgent` accepts `definitionName`) and the Agent tool (`definition` field)
+- **Worktree Isolation** — Sub-agents can run in isolated git worktrees via `WorktreeManager`. Creates temp worktrees with unique branches (`nexus-agent-<uuid>`), auto-cleans worktrees with no changes on completion, preserves worktrees with changes and returns path + branch. Integrated into AgentCoordinator (`isolation: "worktree"` spawn option) and Agent tool
+- **Background Agents** — Long-running agents that execute in the background with completion notifications via `BackgroundAgentManager`. Emits `notification` events on completion/error/stop. REPL integration with `/bg` commands (list, show, stop, prune). Agent tool supports `background: true` for fire-and-forget launches
+- **71 new tests** — Agent definitions (25), worktree isolation (25), background agents (21). Total: 569 tests
+
+### Changed
+- AgentCoordinator constructor now accepts optional `worktreeManager` parameter
+- `spawnAgent()` is now async (worktree creation requires it)
+- Agent tool input schema extended with `definition`, `isolation`, and `background` fields
+- REPL help updated with `/bg` commands
+- `AgentConfig` type extended with `isolation` field
+
 ## [0.8.0] - 2026-04-01
 
 ### Added

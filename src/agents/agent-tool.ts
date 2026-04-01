@@ -20,6 +20,27 @@ const AgentToolInputSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Tool names to make available to the sub-agent. Omit for all tools."),
+  definition: z
+    .string()
+    .optional()
+    .describe(
+      "Name of an agent definition to use. When provided, the definition's " +
+      "systemPrompt, tools, model, maxTurns, and temperature are applied.",
+    ),
+  background: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, launch the agent in the background and return immediately. " +
+      "You will be notified when it completes. Use for long-running tasks.",
+    ),
+  isolation: z
+    .enum(["worktree"])
+    .optional()
+    .describe(
+      "Isolation mode for the sub-agent. When set to 'worktree', the agent " +
+      "runs in an isolated git worktree so it doesn't conflict with other agents.",
+    ),
 });
 
 type AgentToolInput = z.infer<typeof AgentToolInputSchema>;
@@ -54,16 +75,31 @@ export function createAgentTool(
       const agentName = input.name ?? `sub-agent-${agentId.slice(0, 8)}`;
 
       // Spawn the agent
-      coordinator.spawnAgent(
+      await coordinator.spawnAgent(
         {
           id: agentId,
           name: agentName,
           model: input.model ?? context.config.defaultModel,
           tools: input.tools,
           parentId: context.agentId,
+          isolation: input.isolation,
         },
         provider,
+        input.definition,
       );
+
+      // Background mode: launch via BackgroundAgentManager and return immediately
+      if (input.background) {
+        const bgManager = coordinator.getBackgroundManager();
+        const engine = coordinator.getAgentEngine(agentId);
+        if (!engine) {
+          return { data: `Agent error: failed to get engine for agent "${agentId}"` };
+        }
+        bgManager.launch(agentId, engine, input.prompt);
+        return {
+          data: `Agent launched in background (id: ${agentId.slice(0, 8)}). You'll be notified when it completes.`,
+        };
+      }
 
       // Run the agent and consume all events.
       // We accumulate text output to return as the result.

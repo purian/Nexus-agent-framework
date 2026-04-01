@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-498%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-569%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 498 tests covering all core modules.
+Nexus has a comprehensive test suite with 569 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -929,8 +929,11 @@ npx vitest run src/permissions/index.test.ts
 | Skill System | 17 | Frontmatter parsing, arg substitution, tool |
 | Audit Logger | 12 | JSONL logging, scrubbing, truncation |
 | Plan Mode | 23 | Interception, CRUD, status computation, execution |
+| Agent Definitions | 25 | Frontmatter parsing, loading, overrides, integration |
+| Worktree Isolation | 25 | Create, remove, cleanup, change detection |
+| Background Agents | 21 | Launch, notify, stop, prune, concurrent |
 | Self-Hosting | 33 | Config, system prompt, permissions, root detection |
-| **Total** | **498** | **All passing** |
+| **Total** | **569** | **All passing** |
 
 ---
 

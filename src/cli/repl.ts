@@ -2,6 +2,7 @@ import * as readline from "node:readline";
 import chalk from "chalk";
 import type { NexusEngine } from "../core/engine.js";
 import type { Plan } from "../core/plan-mode.js";
+import type { BackgroundAgentManager } from "../agents/background.js";
 import type { EngineEvent, PermissionDecision, TokenUsage } from "../types/index.js";
 
 // ============================================================================
@@ -14,6 +15,7 @@ interface ReplState {
   sessionUsage: TokenUsage;
   turnCount: number;
   aborted: boolean;
+  backgroundManager?: BackgroundAgentManager;
 }
 
 // ============================================================================
@@ -234,6 +236,10 @@ function handleSlashCommand(line: string, state: ReplState): boolean {
       handlePlanCommand(parts.slice(1), state);
       return true;
 
+    case "/bg":
+      handleBgCommand(parts.slice(1), state);
+      return true;
+
     case "/help":
       process.stdout.write(
         chalk.bold("Commands:\n") +
@@ -242,6 +248,7 @@ function handleSlashCommand(line: string, state: ReplState): boolean {
           "  /tools                List registered tools\n" +
           "  /usage                Show token usage stats\n" +
           "  /plan [subcommand]    Plan mode controls\n" +
+          "  /bg [subcommand]      Background agent controls\n" +
           "  /help                 Show this help\n",
       );
       return true;
@@ -409,6 +416,200 @@ function handlePlanCommand(args: string[], state: ReplState): void {
   }
 }
 
+// ============================================================================
+// Background Agent Commands
+// ============================================================================
+
+function handleBgCommand(args: string[], state: ReplState): void {
+  const sub = args[0] ?? "";
+  const bgManager = state.backgroundManager;
+
+  if (!bgManager) {
+    process.stdout.write(chalk.dim("Background agent manager not available.\n"));
+    return;
+  }
+
+  switch (sub) {
+    case "":
+    case "list": {
+      const agents = bgManager.list();
+      if (agents.length === 0) {
+        process.stdout.write(chalk.dim("No background agents.\n"));
+        break;
+      }
+      process.stdout.write(chalk.bold("Background agents:\n"));
+      for (const agent of agents) {
+        const statusColor =
+          agent.status === "completed"
+            ? chalk.green
+            : agent.status === "error"
+              ? chalk.red
+              : agent.status === "stopped"
+                ? chalk.yellow
+                : chalk.cyan;
+
+        const elapsed = agent.completedAt
+          ? agent.completedAt.getTime() - agent.startedAt.getTime()
+          : Date.now() - agent.startedAt.getTime();
+        const elapsedStr = (elapsed / 1000).toFixed(1) + "s";
+
+        process.stdout.write(
+          "  " +
+            chalk.dim(agent.id.slice(0, 8)) +
+            " " +
+            statusColor(`[${agent.status}]`) +
+            chalk.dim(` (${elapsedStr})`) +
+            chalk.dim(" — " + truncate(agent.prompt, 60)) +
+            "\n",
+        );
+      }
+      break;
+    }
+
+    case "show": {
+      const agentId = args[1];
+      if (!agentId) {
+        process.stdout.write(chalk.red("Usage: /bg show <id>\n"));
+        break;
+      }
+
+      // Find agent by full ID or prefix
+      const agents = bgManager.list();
+      const agent = agents.find(
+        (a) => a.id === agentId || a.id.startsWith(agentId),
+      );
+
+      if (!agent) {
+        process.stdout.write(chalk.red(`Background agent "${agentId}" not found.\n`));
+        break;
+      }
+
+      const statusColor =
+        agent.status === "completed"
+          ? chalk.green
+          : agent.status === "error"
+            ? chalk.red
+            : agent.status === "stopped"
+              ? chalk.yellow
+              : chalk.cyan;
+
+      process.stdout.write(
+        "\n" +
+          chalk.bold("Agent ") +
+          chalk.dim(agent.id.slice(0, 8)) +
+          " " +
+          statusColor(`[${agent.status}]`) +
+          "\n" +
+          chalk.dim("  Prompt: ") +
+          agent.prompt +
+          "\n" +
+          chalk.dim("  Started: ") +
+          agent.startedAt.toLocaleTimeString() +
+          "\n",
+      );
+
+      if (agent.completedAt) {
+        const duration = agent.completedAt.getTime() - agent.startedAt.getTime();
+        process.stdout.write(
+          chalk.dim("  Duration: ") + (duration / 1000).toFixed(1) + "s\n",
+        );
+      }
+
+      if (agent.result) {
+        process.stdout.write(
+          chalk.dim("  Result: ") + "\n" + agent.result + "\n",
+        );
+      }
+
+      if (agent.error) {
+        process.stdout.write(
+          chalk.red("  Error: ") + agent.error + "\n",
+        );
+      }
+      break;
+    }
+
+    case "stop": {
+      const agentId = args[1];
+      if (!agentId) {
+        process.stdout.write(chalk.red("Usage: /bg stop <id>\n"));
+        break;
+      }
+
+      const agents = bgManager.list();
+      const agent = agents.find(
+        (a) => a.id === agentId || a.id.startsWith(agentId),
+      );
+
+      if (!agent) {
+        process.stdout.write(chalk.red(`Background agent "${agentId}" not found.\n`));
+        break;
+      }
+
+      bgManager.stop(agent.id);
+      process.stdout.write(chalk.yellow(`Background agent ${agent.id.slice(0, 8)} stopped.\n`));
+      break;
+    }
+
+    case "prune": {
+      const count = bgManager.prune();
+      process.stdout.write(
+        chalk.dim(`Pruned ${count} completed/errored agent${count === 1 ? "" : "s"}.\n`),
+      );
+      break;
+    }
+
+    default:
+      process.stdout.write(
+        chalk.bold("Background agent commands:\n") +
+          "  /bg               List all background agents (alias: /bg list)\n" +
+          "  /bg show <id>     Show details and result of a background agent\n" +
+          "  /bg stop <id>     Stop a running background agent\n" +
+          "  /bg prune         Clean up completed/errored agents\n",
+      );
+      break;
+  }
+}
+
+// ============================================================================
+// Background Notification Handler
+// ============================================================================
+
+function setupBackgroundNotifications(state: ReplState): void {
+  const bgManager = state.backgroundManager;
+  if (!bgManager) return;
+
+  bgManager.on("notification", (notification) => {
+    const idShort = notification.agentId.slice(0, 8);
+    const durationStr = (notification.duration / 1000).toFixed(1) + "s";
+
+    if (notification.status === "completed") {
+      const resultPreview = notification.result
+        ? truncate(notification.result, 100)
+        : "(no output)";
+      process.stdout.write(
+        "\n" +
+          chalk.cyan(`[Background] Agent ${idShort} completed (${durationStr})`) +
+          chalk.dim(` — ${resultPreview}`) +
+          "\n",
+      );
+    } else if (notification.status === "error") {
+      process.stdout.write(
+        "\n" +
+          chalk.red(`[Background] Agent ${idShort} failed`) +
+          chalk.dim(` — ${notification.error ?? "unknown error"}`) +
+          "\n",
+      );
+    } else if (notification.status === "stopped") {
+      process.stdout.write(
+        "\n" +
+          chalk.yellow(`[Background] Agent ${idShort} stopped (${durationStr})`) +
+          "\n",
+      );
+    }
+  });
+}
+
 function renderPlan(plan: Plan): void {
   const statusColor =
     plan.status === "approved"
@@ -532,7 +733,7 @@ async function executePlanAsync(planId: string, state: ReplState): Promise<void>
  */
 export async function startRepl(
   engine: NexusEngine,
-  options?: { systemPrompt?: string },
+  options?: { systemPrompt?: string; backgroundManager?: BackgroundAgentManager },
 ): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -546,10 +747,14 @@ export async function startRepl(
     sessionUsage: { inputTokens: 0, outputTokens: 0 },
     turnCount: 0,
     aborted: false,
+    backgroundManager: options?.backgroundManager,
   };
 
   // Wire up permission handler on the engine's event emitter
   setupPermissionHandler(state);
+
+  // Wire up background agent notification handler
+  setupBackgroundNotifications(state);
 
   // Graceful Ctrl+C handling
   let runningAbortController: AbortController | null = null;

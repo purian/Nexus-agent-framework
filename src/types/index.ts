@@ -213,6 +213,7 @@ export interface AgentConfig {
   maxTokens?: number;
   maxTurns?: number;
   parentId?: string;
+  isolation?: "worktree";
 }
 
 export interface AgentState {

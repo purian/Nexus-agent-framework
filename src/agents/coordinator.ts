@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { NexusEngine } from "../core/engine.js";
+import { BackgroundAgentManager } from "./background.js";
 import type {
   AgentConfig,
   AgentState,
@@ -12,6 +13,9 @@ import type {
   TokenUsage,
   Tool,
 } from "../types/index.js";
+import type { WorktreeManager } from "./worktree.js";
+import { AgentDefinitionLoader } from "./definitions.js";
+import type { AgentDefinition } from "./definitions.js";
 
 /**
  * AgentCoordinator — manages spawning, tracking, and communication of sub-agents.
@@ -26,14 +30,57 @@ export class AgentCoordinator {
   private permissions: PermissionContext;
   private tools: Map<string, Tool> = new Map();
   private runningCount = 0;
+  private worktreeManager?: WorktreeManager;
+  private definitionLoader: AgentDefinitionLoader = new AgentDefinitionLoader();
+  private backgroundManager: BackgroundAgentManager = new BackgroundAgentManager();
+
+  /** Maps agent ID to worktree ID for agents spawned with isolation: "worktree" */
+  private agentWorktrees: Map<string, string> = new Map();
 
   /** Messages sent between agents, keyed by recipient agent ID */
   private mailboxes: Map<string, Array<{ from: string; message: string }>> =
     new Map();
 
-  constructor(config: NexusConfig, permissions: PermissionContext) {
+  constructor(
+    config: NexusConfig,
+    permissions: PermissionContext,
+    worktreeManager?: WorktreeManager,
+  ) {
     this.config = config;
     this.permissions = permissions;
+    this.worktreeManager = worktreeManager;
+  }
+
+  /**
+   * Get the WorktreeManager instance, if one was provided.
+   */
+  getWorktreeManager(): WorktreeManager | undefined {
+    return this.worktreeManager;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Agent Definitions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Load agent definitions from project and global directories.
+   */
+  loadDefinitions(projectDir: string): AgentDefinition[] {
+    return this.definitionLoader.loadDefinitions(projectDir);
+  }
+
+  /**
+   * List all loaded agent definitions.
+   */
+  listDefinitions(): AgentDefinition[] {
+    return Array.from(this.definitionLoader["definitions"].values());
+  }
+
+  /**
+   * Get a single agent definition by name.
+   */
+  getDefinition(name: string): AgentDefinition | undefined {
+    return this.definitionLoader.getDefinition(name);
   }
 
   // ---------------------------------------------------------------------------
@@ -59,16 +106,48 @@ export class AgentCoordinator {
    *
    * The agent is created in the "idle" state with its own NexusEngine
    * instance. Tools are filtered according to `config.tools` when provided.
+   *
+   * When `definitionName` is provided, the matching AgentDefinition's
+   * systemPrompt, tools, model, maxTurns, and temperature are applied
+   * (config fields take precedence over definition defaults).
+   *
+   * When `config.isolation` is `"worktree"`, a git worktree is created
+   * and the agent's working directory is set to the worktree path.
    */
-  spawnAgent(config: AgentConfig, provider: LLMProvider): string {
+  async spawnAgent(
+    config: AgentConfig,
+    provider: LLMProvider,
+    definitionName?: string,
+  ): Promise<string> {
     const id = config.id || uuid();
-    const agentConfig: AgentConfig = { ...config, id };
+    let agentConfig: AgentConfig = { ...config, id };
+
+    // Apply agent definition overrides when a definition name is provided
+    if (definitionName) {
+      const definition = this.definitionLoader.getDefinition(definitionName);
+      if (definition) {
+        agentConfig = {
+          ...agentConfig,
+          systemPrompt: agentConfig.systemPrompt ?? definition.systemPrompt,
+          tools: agentConfig.tools ?? definition.tools,
+          model: agentConfig.model || definition.model || agentConfig.model,
+          maxTurns: agentConfig.maxTurns ?? definition.maxTurns,
+        };
+      }
+    }
 
     // Build a per-agent NexusConfig, inheriting defaults from the coordinator
     const engineConfig: NexusConfig = {
       ...this.config,
-      defaultModel: config.model || this.config.defaultModel,
+      defaultModel: agentConfig.model || this.config.defaultModel,
     };
+
+    // If worktree isolation is requested and a manager is available, create one
+    if (config.isolation === "worktree" && this.worktreeManager) {
+      const worktreeInfo = await this.worktreeManager.create({ agentId: id });
+      engineConfig.workingDirectory = worktreeInfo.path;
+      this.agentWorktrees.set(id, worktreeInfo.id);
+    }
 
     const engine = new NexusEngine(provider, engineConfig, this.permissions);
 
@@ -164,6 +243,9 @@ export class AgentCoordinator {
       managed.state.status = "completed";
       managed.state.messages = managed.engine.getMessages();
       managed.state.usage = managed.engine.getUsage();
+
+      // Handle worktree cleanup for isolated agents
+      await this.handleWorktreeCompletion(id, managed.state);
     } catch (err) {
       managed.state.status = "error";
       managed.state.error =
@@ -182,6 +264,13 @@ export class AgentCoordinator {
    */
   getAgent(id: string): AgentState | undefined {
     return this.agents.get(id)?.state;
+  }
+
+  /**
+   * Get the NexusEngine for a specific agent (used by background agent launching).
+   */
+  getAgentEngine(id: string): NexusEngine | undefined {
+    return this.agents.get(id)?.engine;
   }
 
   /**
@@ -248,6 +337,76 @@ export class AgentCoordinator {
     const messages = [...mailbox];
     mailbox.length = 0;
     return messages;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Background Agents
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run an agent in the background. Spawns the agent and launches it
+   * via the BackgroundAgentManager so execution happens asynchronously.
+   * Returns the agent ID immediately.
+   */
+  async runAgentInBackground(
+    id: string,
+    prompt: string,
+    provider: LLMProvider,
+  ): Promise<string> {
+    // Spawn the agent normally to get its engine set up
+    const agentId = await this.spawnAgent({ id, name: id, model: this.config.defaultModel }, provider);
+
+    const managed = this.agents.get(agentId);
+    if (!managed) {
+      throw new Error(`Failed to spawn background agent "${agentId}"`);
+    }
+
+    // Launch via the background manager (fire-and-forget)
+    return this.backgroundManager.launch(agentId, managed.engine, prompt);
+  }
+
+  /**
+   * Get the BackgroundAgentManager instance.
+   */
+  getBackgroundManager(): BackgroundAgentManager {
+    return this.backgroundManager;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Worktree Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * After an agent completes or is stopped, check its worktree for changes.
+   * If no changes, auto-remove the worktree. If changes exist, keep it and
+   * append the worktree path + branch to the agent result.
+   */
+  private async handleWorktreeCompletion(
+    agentId: string,
+    state: AgentState,
+  ): Promise<void> {
+    const worktreeId = this.agentWorktrees.get(agentId);
+    if (!worktreeId || !this.worktreeManager) return;
+
+    const info = this.worktreeManager.get(worktreeId);
+    if (!info) return;
+
+    try {
+      const hasChanges = await this.worktreeManager.hasChanges(worktreeId);
+
+      if (!hasChanges) {
+        // No changes — clean up the worktree
+        await this.worktreeManager.remove(worktreeId);
+        this.agentWorktrees.delete(agentId);
+      } else {
+        // Changes exist — keep the worktree and report it
+        const suffix =
+          `\n[worktree] Changes preserved in branch "${info.branch}" at ${info.path}`;
+        state.result = (state.result ?? "") + suffix;
+      }
+    } catch {
+      // Best-effort — don't fail the agent result because of worktree cleanup
+    }
   }
 }
 
