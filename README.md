@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-711%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-794%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 711 tests covering all core modules.
+Nexus has a comprehensive test suite with 794 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -938,7 +938,11 @@ npx vitest run src/permissions/index.test.ts
 | RBAC | 34 | Roles, assignments, inheritance, permissions, built-in roles |
 | Encrypted Memory | 29 | AES-256-GCM encrypt/decrypt, key derivation, MemoryManager integration |
 | Rate Limiter | 28 | Sliding window, per-tool/agent limits, engine integration |
-| **Total** | **711** | **All passing** |
+| Web UI Server | 25 | REST API, sessions, auth, CORS, WebSocket |
+| VS Code Client | 5 | Session flow, messaging, WebSocket events, auth |
+| Platform Adapters | 25 | WhatsApp, Email, Matrix adapters + factory |
+| Nexus Hub | 28 | Registry, search, install, sync, verify, stats |
+| **Total** | **794** | **All passing** |
 
 ---
 
@@ -1000,12 +1004,23 @@ nexus/
 │   │   ├── index.ts              # Platform factory
 │   │   ├── telegram.ts           # Telegram adapter
 │   │   ├── discord.ts            # Discord adapter
-│   │   └── slack.ts              # Slack adapter
+│   │   ├── slack.ts              # Slack adapter
+│   │   ├── webhook.ts            # Generic HTTP webhook adapter
+│   │   ├── whatsapp.ts           # WhatsApp Business API adapter
+│   │   ├── email.ts              # Email adapter (IMAP/SMTP)
+│   │   └── matrix.ts             # Matrix protocol adapter
+│   ├── web/
+│   │   ├── index.ts              # Web UI exports
+│   │   └── server.ts             # REST API + WebSocket server
+│   ├── hub/
+│   │   └── index.ts              # Nexus Hub (MCP server directory)
 │   ├── config/
 │   │   └── index.ts              # Configuration loading
 │   └── cli/
 │       ├── index.ts              # CLI entry point
 │       └── repl.ts               # Interactive REPL
+├── vscode-extension/             # VS Code extension scaffold
+├── create-nexus-plugin/          # Plugin scaffolding CLI
 ├── package.json
 ├── tsconfig.json
 ├── tsup.config.ts

@@ -1,0 +1,66 @@
+{
+  "name": "nexus-agent",
+  "displayName": "Nexus Agent",
+  "description": "AI agent framework integration for VS Code — secure, composable, multi-agent",
+  "version": "0.1.0",
+  "publisher": "nexus-agent",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["AI", "Chat"],
+  "activationEvents": ["onCommand:nexus.start", "onView:nexus-chat"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "nexus.start", "title": "Nexus: Start Agent Session" },
+      { "command": "nexus.stop", "title": "Nexus: Stop Agent Session" },
+      { "command": "nexus.send", "title": "Nexus: Send Message" },
+      { "command": "nexus.approveAction", "title": "Nexus: Approve Pending Action" },
+      { "command": "nexus.denyAction", "title": "Nexus: Deny Pending Action" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nexus",
+          "title": "Nexus Agent",
+          "icon": "resources/nexus-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "nexus": [
+        { "type": "webview", "id": "nexus-chat", "name": "Chat" }
+      ]
+    },
+    "configuration": {
+      "title": "Nexus Agent",
+      "properties": {
+        "nexus.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3000",
+          "description": "URL of the Nexus Web UI server"
+        },
+        "nexus.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Authentication token for the Nexus server"
+        },
+        "nexus.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start a Nexus session when the extension activates"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./tsconfig.json",
+    "watch": "tsc -watch -p ./tsconfig.json",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

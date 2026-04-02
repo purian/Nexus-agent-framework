@@ -91,6 +91,10 @@ export type {
   RateLimitRule,
   RateLimitDecision,
 
+  // Hub
+  HubServerEntry,
+  HubRegistry,
+
   // Engine Events
   EngineEvent,
 } from "./types/index.js";
@@ -132,6 +136,13 @@ export { PluginLoader } from "./plugins/index.js";
 
 // Platforms
 export { createPlatform } from "./platforms/index.js";
+
+// Web
+export { NexusWebServer } from "./web/server.js";
+export type { WebUIConfig, WebUISession } from "./web/server.js";
+
+// Hub
+export { NexusHub } from "./hub/index.js";
 
 // Config
 export { loadConfig } from "./config/index.js";

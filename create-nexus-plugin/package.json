@@ -1,0 +1,16 @@
+{
+  "name": "create-nexus-plugin",
+  "version": "0.1.0",
+  "description": "Scaffold a new Nexus plugin project",
+  "bin": {
+    "create-nexus-plugin": "./index.js"
+  },
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "nexus",
+    "plugin",
+    "scaffold",
+    "cli"
+  ]
+}

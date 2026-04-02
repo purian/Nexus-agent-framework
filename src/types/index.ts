@@ -453,6 +453,54 @@ export interface RateLimitDecision {
 }
 
 // ============================================================================
+// Hub Types
+// ============================================================================
+
+export interface HubServerEntry {
+  /** Unique identifier (e.g., "github/nexus-mcp-git") */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Description */
+  description: string;
+  /** Author/organization */
+  author: string;
+  /** npm package name or git repo URL */
+  source: string;
+  /** Transport type */
+  transport: "stdio" | "http" | "sse";
+  /** Command to start (for stdio) */
+  command?: string;
+  /** Default args */
+  args?: string[];
+  /** Server URL (for http/sse) */
+  url?: string;
+  /** Required environment variables */
+  requiredEnv?: string[];
+  /** Categories/tags */
+  tags?: string[];
+  /** Security review status */
+  securityStatus: "verified" | "community" | "unreviewed";
+  /** Version */
+  version: string;
+  /** Last updated timestamp */
+  updatedAt: string;
+  /** Downloads/installs count */
+  downloads?: number;
+}
+
+export interface HubRegistry {
+  /** Registry version */
+  version: string;
+  /** Last synced timestamp */
+  lastSynced?: string;
+  /** Remote registry URL for syncing */
+  remoteUrl?: string;
+  /** Server entries */
+  servers: HubServerEntry[];
+}
+
+// ============================================================================
 // Runtime Interface (exposed to plugins)
 // ============================================================================
 

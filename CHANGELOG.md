@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-04-02
+
+### Added
+- **Web UI Server** — Browser-based interface via HTTP REST API + WebSocket. `NexusWebServer` provides session management (create, list, get, delete), message handling, real-time event streaming via WebSocket, Bearer token authentication, and CORS support. Default bind to `127.0.0.1` for security. New `nexus web` CLI command with `--port`, `--host`, `--cors`, and `--auth-token` options
+- **VS Code Extension** — Complete extension scaffold in `vscode-extension/` directory. Includes `NexusClient` (REST + WebSocket client), `NexusChatProvider` (webview chat UI using VS Code theme variables), 5 commands (start, stop, send, approve, deny), activity bar integration, and configurable server URL/auth token. Connects to running Nexus Web UI server
+- **WhatsApp Adapter** — WhatsApp Business Cloud API adapter with HTTP webhook server for incoming messages and REST API for sending. Handles Meta webhook verification (GET challenge/response) and incoming message parsing from the WhatsApp payload structure
+- **Email Adapter** — IMAP/SMTP email adapter using native `node:tls`. Polls INBOX for UNSEEN messages via IMAP, sends via SMTP with STARTTLS support. Includes `parseEmailAddress()` for "Name \<email\>" format extraction
+- **Matrix Adapter** — Matrix Client-Server API adapter with long-polling `/sync` for receiving and PUT for sending `m.room.message` events. Verifies credentials via `whoami` endpoint, skips own messages, tracks sync tokens
+- **Nexus Hub** — Community MCP server directory with local JSON registry. Search, list, install, uninstall, publish, sync (from remote URL), and verify commands. Seeds 5 built-in verified servers (filesystem, git, web-search, database, slack-tools). New `nexus hub` CLI command group with 7 subcommands
+- **create-nexus-plugin** — Plugin scaffolding CLI (`npx create-nexus-plugin <name>`). Generates a complete plugin project with package.json, tsconfig, Plugin implementation with example Tool, vitest test, and README
+- **83 new tests** — Web UI server (25), VS Code client flow (5), platform adapters (25), Nexus Hub (28). Total: 794 tests
+
+### Changed
+- Platform factory now supports 7 adapters: telegram, discord, slack, webhook, whatsapp, email, matrix
+- CLI extended with `nexus web` and `nexus hub` command groups
+- `ws` added to dependencies, `@types/ws` to devDependencies
+
 ## [0.11.0] - 2026-04-02
 
 ### Added

@@ -18,7 +18,7 @@ import type {
 // Version & Program Setup
 // ============================================================================
 
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 
 const program = new Command()
   .name("nexus")
@@ -532,6 +532,63 @@ program
   });
 
 // ============================================================================
+// Command: web
+// ============================================================================
+
+program
+  .command("web")
+  .description("Start the Web UI server (REST API + WebSocket)")
+  .option("--port <port>", "HTTP port", parseInt, 3000)
+  .option("--host <host>", "Bind host", "127.0.0.1")
+  .option("--cors", "Enable CORS headers for development")
+  .option("--auth-token <token>", "Require Bearer token for all requests")
+  .action(async (cmdOpts) => {
+    try {
+      const { NexusWebServer } = await import("../web/server.js");
+      const server = new NexusWebServer({
+        port: cmdOpts.port,
+        host: cmdOpts.host,
+        cors: cmdOpts.cors ?? false,
+        authToken: cmdOpts.authToken,
+      });
+
+      await server.start();
+      process.stderr.write(
+        chalk.bold("Nexus Web UI") +
+          chalk.dim(` v${VERSION}`) +
+          "\n",
+      );
+      process.stderr.write(
+        chalk.dim(`  Listening on http://${cmdOpts.host}:${cmdOpts.port}`) +
+          "\n",
+      );
+      if (cmdOpts.cors) {
+        process.stderr.write(chalk.yellow("  CORS enabled") + "\n");
+      }
+      if (cmdOpts.authToken) {
+        process.stderr.write(chalk.dim("  Authentication required") + "\n");
+      }
+
+      // Graceful shutdown
+      const shutdown = async () => {
+        process.stderr.write(chalk.dim("\nShutting down...") + "\n");
+        await server.stop();
+        process.exit(0);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    } catch (err) {
+      process.stderr.write(
+        chalk.red(
+          "Failed to start web server: " +
+            (err instanceof Error ? err.message : String(err)),
+        ) + "\n",
+      );
+      process.exit(1);
+    }
+  });
+
+// ============================================================================
 // Command: config
 // ============================================================================
 
@@ -571,6 +628,209 @@ program
           );
         }
       }
+    }
+  });
+
+// ============================================================================
+// Command: hub (community MCP server directory)
+// ============================================================================
+
+const hubCmd = program
+  .command("hub")
+  .description("Nexus Hub — community MCP server directory");
+
+hubCmd
+  .command("search <query>")
+  .description("Search for MCP servers")
+  .option("--tag <tag>", "Filter by tag")
+  .option("--status <status>", "Filter by security status (verified, community, unreviewed)")
+  .action(async (query: string, cmdOpts) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+    const results = hub.search(query, {
+      tag: cmdOpts.tag,
+      status: cmdOpts.status,
+    });
+
+    if (results.length === 0) {
+      process.stdout.write(chalk.yellow("No servers found.\n"));
+      return;
+    }
+
+    process.stdout.write(chalk.bold(`Found ${results.length} server(s):\n\n`));
+    for (const entry of results) {
+      const statusColor =
+        entry.securityStatus === "verified" ? chalk.green : chalk.yellow;
+      process.stdout.write(
+        `  ${chalk.bold(entry.id)} — ${entry.description}\n` +
+          `    ${statusColor(`[${entry.securityStatus}]`)} v${entry.version}` +
+          (entry.tags?.length ? chalk.dim(` (${entry.tags.join(", ")})`) : "") +
+          "\n",
+      );
+    }
+  });
+
+hubCmd
+  .command("list")
+  .description("List all available servers")
+  .option("--tag <tag>", "Filter by tag")
+  .option("--status <status>", "Filter by security status")
+  .option("--limit <n>", "Max results", parseInt)
+  .action(async (cmdOpts) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+    const servers = hub.list({
+      tag: cmdOpts.tag,
+      status: cmdOpts.status,
+      limit: cmdOpts.limit,
+    });
+
+    if (servers.length === 0) {
+      process.stdout.write(chalk.yellow("No servers found.\n"));
+      return;
+    }
+
+    process.stdout.write(chalk.bold(`Available servers (${servers.length}):\n\n`));
+    for (const entry of servers) {
+      const statusColor =
+        entry.securityStatus === "verified" ? chalk.green : chalk.yellow;
+      process.stdout.write(
+        `  ${chalk.bold(entry.id)} — ${entry.name}\n` +
+          `    ${statusColor(`[${entry.securityStatus}]`)} v${entry.version}` +
+          chalk.dim(` by ${entry.author}`) +
+          "\n",
+      );
+    }
+  });
+
+hubCmd
+  .command("info <id>")
+  .description("Show details of a server")
+  .action(async (id: string) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+    const entry = hub.get(id);
+
+    if (!entry) {
+      process.stderr.write(chalk.red(`Server not found: ${id}\n`));
+      process.exit(1);
+    }
+
+    process.stdout.write(chalk.bold(entry.name) + chalk.dim(` (${entry.id})`) + "\n");
+    process.stdout.write(chalk.dim("─".repeat(50)) + "\n");
+    process.stdout.write(`  Description:  ${entry.description}\n`);
+    process.stdout.write(`  Author:       ${entry.author}\n`);
+    process.stdout.write(`  Source:       ${entry.source}\n`);
+    process.stdout.write(`  Transport:    ${entry.transport}\n`);
+    process.stdout.write(`  Version:      ${entry.version}\n`);
+    process.stdout.write(`  Status:       ${entry.securityStatus}\n`);
+    if (entry.command) process.stdout.write(`  Command:      ${entry.command}\n`);
+    if (entry.args?.length) process.stdout.write(`  Args:         ${entry.args.join(" ")}\n`);
+    if (entry.url) process.stdout.write(`  URL:          ${entry.url}\n`);
+    if (entry.requiredEnv?.length) {
+      process.stdout.write(`  Required env: ${entry.requiredEnv.join(", ")}\n`);
+    }
+    if (entry.tags?.length) process.stdout.write(`  Tags:         ${entry.tags.join(", ")}\n`);
+    process.stdout.write(`  Updated:      ${entry.updatedAt}\n`);
+    if (entry.downloads !== undefined) {
+      process.stdout.write(`  Downloads:    ${entry.downloads}\n`);
+    }
+  });
+
+hubCmd
+  .command("install <id>")
+  .description("Install an MCP server")
+  .option("-e, --env <vars...>", "Environment variables (KEY=VALUE)")
+  .action(async (id: string, cmdOpts) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+
+    // Parse env vars from CLI
+    const env: Record<string, string> = {};
+    if (cmdOpts.env) {
+      for (const pair of cmdOpts.env) {
+        const eqIdx = pair.indexOf("=");
+        if (eqIdx > 0) {
+          env[pair.slice(0, eqIdx)] = pair.slice(eqIdx + 1);
+        }
+      }
+    }
+
+    try {
+      const config = hub.install(id, Object.keys(env).length > 0 ? env : undefined);
+      process.stdout.write(chalk.green(`Installed ${id}\n\n`));
+      process.stdout.write(chalk.bold("MCP Server Config:\n"));
+      process.stdout.write(JSON.stringify(config, null, 2) + "\n\n");
+      process.stdout.write(
+        chalk.dim("Add this to your nexus config's mcpServers array.\n"),
+      );
+    } catch (err) {
+      process.stderr.write(
+        chalk.red(err instanceof Error ? err.message : String(err)) + "\n",
+      );
+      process.exit(1);
+    }
+  });
+
+hubCmd
+  .command("publish <json>")
+  .description("Publish a server to local registry")
+  .action(async (json: string) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+
+    try {
+      const entry = JSON.parse(json);
+      hub.publish(entry);
+      process.stdout.write(chalk.green(`Published ${entry.id}\n`));
+    } catch (err) {
+      process.stderr.write(
+        chalk.red(
+          "Invalid JSON: " + (err instanceof Error ? err.message : String(err)),
+        ) + "\n",
+      );
+      process.exit(1);
+    }
+  });
+
+hubCmd
+  .command("sync")
+  .description("Sync from remote registry")
+  .option("--url <url>", "Remote registry URL")
+  .action(async (cmdOpts) => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+
+    try {
+      process.stdout.write(chalk.dim("Syncing...") + "\n");
+      const result = await hub.sync(cmdOpts.url);
+      process.stdout.write(
+        chalk.green("Sync complete: ") +
+          `${result.added} added, ${result.updated} updated, ${result.removed} removed\n`,
+      );
+    } catch (err) {
+      process.stderr.write(
+        chalk.red(err instanceof Error ? err.message : String(err)) + "\n",
+      );
+      process.exit(1);
+    }
+  });
+
+hubCmd
+  .command("stats")
+  .description("Show registry statistics")
+  .action(async () => {
+    const { NexusHub } = await import("../hub/index.js");
+    const hub = new NexusHub();
+    const stats = hub.stats();
+
+    process.stdout.write(chalk.bold("Hub Registry Stats\n"));
+    process.stdout.write(chalk.dim("─".repeat(30)) + "\n");
+    process.stdout.write(`  Total servers:  ${stats.total}\n`);
+    process.stdout.write(`  Verified:       ${chalk.green(String(stats.verified))}\n`);
+    process.stdout.write(`  Community:      ${chalk.yellow(String(stats.community))}\n`);
+    if (stats.tags.length > 0) {
+      process.stdout.write(`  Tags:           ${stats.tags.join(", ")}\n`);
     }
   });
 
