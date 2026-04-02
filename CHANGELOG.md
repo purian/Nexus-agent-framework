@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-04-02
+
+### Added
+- **Task Scheduler** — Cron-like recurring task system. `TaskScheduler` parses standard 5-field cron expressions (supporting `*`, ranges, steps, lists), calculates next run times, and emits events when tasks are due. Supports max concurrent runs, manual triggering, enable/disable, and task lifecycle tracking. Fully decoupled from the engine via EventEmitter
+- **Proactive Agents** — Agents that monitor conditions and act autonomously. `ProactiveAgentManager` supports 5 trigger types: file change (via `fs.watch`), command exit code, webhook, interval timer, and cron expression. Includes cooldown enforcement, max trigger limits with auto-disable, and per-agent watcher lifecycle
+- **Cross-Session Context Recall** — Automatic relevant memory injection. `ContextRecall` searches the memory store for pertinent entries, scores them by keyword relevance + recency weighting, filters by type and minimum relevance threshold, and formats them as a system prompt section. Supports working directory boosting and configurable limits
+- **Learning from Feedback** — `FeedbackLearner` detects correction signals in user messages (negation, correction, instruction, preference patterns), extracts structured lessons, stores them as feedback memories, and supports reinforcement of recurring lessons. Includes pruning of old lessons and system prompt formatting
+- **Multi-Model Router** — `ModelRouter` implements `LLMProvider` with intelligent complexity-based routing. Estimates request complexity (0-10) based on token count, tool usage, thinking mode, and conversation history. Routes simple queries to cheap models, complex tasks to powerful models. Tracks per-model usage and cost
+- **Cost Optimizer** — `CostOptimizer` with request-level prompt caching (TTL-based with LRU eviction), system prompt compression (whitespace normalization + middle-truncation), and message optimization (deduplication + tool result truncation). Tracks cache hit rates and estimated savings
+- **138 new tests** — Scheduler (25), proactive agents (20), context recall (22), feedback learner (22), model router (26), cost optimizer (23). Total: 932 tests
+
+### Changed
+- Exports extended with all 6 new modules and their types
+
 ## [0.12.0] - 2026-04-02
 
 ### Added

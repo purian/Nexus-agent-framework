@@ -3,7 +3,7 @@
 ## Project Overview
 Nexus is an open-source, MCP-native personal AI agent framework. Secure, composable, multi-agent.
 - **Repo**: https://github.com/purian/Nexus-agent-framework
-- **Current version**: 0.12.0
+- **Current version**: 0.13.0
 - **Stack**: TypeScript, Node 20+, Zod, SQLite, MCP SDK
 
 ## Commands
@@ -11,7 +11,7 @@ Nexus is an open-source, MCP-native personal AI agent framework. Secure, composa
 npm run dev          # Watch mode
 npm run build        # Production build (tsup)
 npm run typecheck    # TypeScript check
-npm test             # Run all 794 tests (vitest)
+npm test             # Run all 932 tests (vitest)
 npm run test:watch   # Watch mode tests
 ```
 
@@ -31,7 +31,7 @@ npm run test:watch   # Watch mode tests
 - `src/config/` — Multi-source config (defaults → user → project → env → CLI)
 
 ## Development Rules
-- **No regressions**: Run `npm test` before every commit. All 794+ tests must pass.
+- **No regressions**: Run `npm test` before every commit. All 932+ tests must pass.
 - **Version bumps**: Update package.json, src/cli/index.ts (VERSION const), and CHANGELOG.md
 - **Changelog**: Follow Keep a Changelog format. Update for every release.
 - **Commits**: Descriptive messages. Include "Co-Authored-By: Claude" line.
@@ -44,7 +44,7 @@ npm run test:watch   # Watch mode tests
 See `roadmap.yaml` for full details. Key remaining items:
 - Phase 4: SOC 2 compliance guide (low priority, all other items done)
 - Phase 5: Complete (Web UI, VS Code ext, WhatsApp/Email/Matrix adapters, Hub, scaffolding CLI)
-- Phase 6: Proactive agents, scheduled tasks, learning, cross-session context, multi-model routing
+- Phase 6: Complete (scheduler, proactive agents, context recall, feedback learning, model router, cost optimizer)
 - Phase 5: Web UI, VS Code extension
 - Phase 6: Proactive agents, scheduled tasks, multi-model routing
 

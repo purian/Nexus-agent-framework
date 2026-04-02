@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-794%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-932%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 794 tests covering all core modules.
+Nexus has a comprehensive test suite with 932 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -942,7 +942,13 @@ npx vitest run src/permissions/index.test.ts
 | VS Code Client | 5 | Session flow, messaging, WebSocket events, auth |
 | Platform Adapters | 25 | WhatsApp, Email, Matrix adapters + factory |
 | Nexus Hub | 28 | Registry, search, install, sync, verify, stats |
-| **Total** | **794** | **All passing** |
+| Task Scheduler | 25 | Cron parsing, scheduling, concurrency, lifecycle |
+| Proactive Agents | 20 | Triggers, cooldowns, watchers, file/command/interval |
+| Context Recall | 22 | Relevance scoring, recency, formatting, keyword extraction |
+| Feedback Learner | 22 | Pattern detection, lesson extraction, reinforcement, pruning |
+| Model Router | 26 | Complexity routing, provider delegation, cost tracking |
+| Cost Optimizer | 23 | Caching, prompt compression, message dedup, TTL/LRU eviction |
+| **Total** | **932** | **All passing** |
 
 ---
 
@@ -963,10 +969,13 @@ nexus/
 │   │       ├── gemini.ts         # Google Gemini provider (2.0 Flash, 2.5 Pro)
 │   │       ├── bedrock.ts        # AWS Bedrock provider (Converse API)
 │   │       ├── ollama.ts         # Ollama local model provider
-│   │       └── fallback.ts       # Auto-failover provider chain
+│   │       ├── fallback.ts       # Auto-failover provider chain
+│   │       └── router.ts         # Multi-model intelligent routing
 │   │   ├── context-compressor.ts # Auto-summarization for long sessions
 │   │   ├── audit-logger.ts        # JSONL tool execution logging
-│   │   └── rate-limiter.ts       # Sliding window rate limiter
+│   │   ├── rate-limiter.ts       # Sliding window rate limiter
+│   │   ├── scheduler.ts          # Cron-like task scheduler
+│   │   └── cost-optimizer.ts     # Prompt caching + cost optimization
 │   ├── tools/
 │   │   ├── index.ts              # Tool exports + createDefaultTools()
 │   │   ├── bash.ts               # Shell execution (with optional Docker sandbox)
@@ -989,10 +998,13 @@ nexus/
 │   │   ├── index.ts              # Agent exports
 │   │   ├── coordinator.ts        # AgentCoordinator
 │   │   ├── agent-tool.ts         # Agent spawning tool
-│   │   └── message-tool.ts       # Inter-agent messaging
+│   │   ├── message-tool.ts       # Inter-agent messaging
+│   │   └── proactive.ts          # Proactive agent monitor
 │   ├── memory/
 │   │   ├── index.ts              # MemoryManager (SQLite)
 │   │   ├── encryption.ts         # AES-256-GCM at-rest encryption
+│   │   ├── context-recall.ts     # Cross-session context recall
+│   │   ├── feedback-learner.ts   # Learning from user feedback
 │   │   └── tool.ts               # Memory tool for LLM
 │   ├── skills/
 │   │   ├── index.ts              # Skills exports

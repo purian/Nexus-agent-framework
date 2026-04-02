@@ -14,6 +14,16 @@ export { OllamaProvider } from "./core/providers/ollama.js";
 export { GeminiProvider } from "./core/providers/gemini.js";
 export { BedrockProvider } from "./core/providers/bedrock.js";
 export { FallbackProvider } from "./core/providers/fallback.js";
+export { ModelRouter } from "./core/providers/router.js";
+export type { ModelRoute, RouterConfig, RoutingDecision } from "./core/providers/router.js";
+export { CostOptimizer } from "./core/cost-optimizer.js";
+export type { CostOptimizerConfig, CostStats } from "./core/cost-optimizer.js";
+export { TaskScheduler } from "./core/scheduler.js";
+export type {
+  ScheduledTask,
+  SchedulerConfig,
+  SchedulerEvent,
+} from "./core/scheduler.js";
 export { AuditLogger } from "./core/audit-logger.js";
 export { ContextCompressor } from "./core/context-compressor.js";
 export { PlanExecutor } from "./core/plan-mode.js";
@@ -126,10 +136,20 @@ export type {
   BackgroundAgentInfo,
   BackgroundAgentNotification,
 } from "./agents/background.js";
+export { ProactiveAgentManager } from "./agents/proactive.js";
+export type {
+  ProactiveAgentConfig,
+  ProactiveTrigger,
+  ProactiveEvent,
+} from "./agents/proactive.js";
 
 // Memory
 export { MemoryManager } from "./memory/index.js";
 export { MemoryEncryption } from "./memory/encryption.js";
+export { ContextRecall } from "./memory/context-recall.js";
+export type { ContextRecallConfig, RecalledMemory } from "./memory/context-recall.js";
+export { FeedbackLearner } from "./memory/feedback-learner.js";
+export type { FeedbackConfig, Lesson } from "./memory/feedback-learner.js";
 
 // Plugins
 export { PluginLoader } from "./plugins/index.js";
