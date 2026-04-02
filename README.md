@@ -14,7 +14,7 @@ Secure. Composable. Multi-agent.
 
 - [Overview](#overview)
 - [Key Features](#key-features)
-- [Security First](#security-first)
+- [Security First](#security-first) | [Why Nexus?](docs/why-nexus.md)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -117,6 +117,8 @@ Bash(sudo *)      -> deny
 | Network exposure | None by default | HTTP often default |
 
 > **Philosophy:** An AI agent should never do more than what it's explicitly allowed to do. Nexus follows the principle of least privilege at every layer.
+>
+> **Read the full comparison:** [Why Nexus? Security-First AI Agents in a Post-Incident World](docs/why-nexus.md)
 
 ---
 
