@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-932%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-958%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 932 tests covering all core modules.
+Nexus has a comprehensive test suite with 958 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -918,7 +918,7 @@ npx vitest run src/permissions/index.test.ts
 | Core Engine | 54 | Tool loop, streaming, concurrency, budget, abort, plan mode |
 | Built-in Tools | 22 | Real filesystem operations in temp directories |
 | Memory System | 57 | SQLite CRUD, FTS5 search, memory tool |
-| Agent Coordinator | 55 | Spawning, messaging, lifecycle management |
+| Agent Coordinator | 81 | Spawning, structured messaging, lifecycle, broadcast, history |
 | Config System | 68 | Defaults, env vars, full precedence chain |
 | OpenAI Provider | 18 | SSE parsing, tool calling, error handling |
 | Gemini Provider | 25 | SSE streaming, function calling, model listing |
@@ -948,7 +948,7 @@ npx vitest run src/permissions/index.test.ts
 | Feedback Learner | 22 | Pattern detection, lesson extraction, reinforcement, pruning |
 | Model Router | 26 | Complexity routing, provider delegation, cost tracking |
 | Cost Optimizer | 23 | Caching, prompt compression, message dedup, TTL/LRU eviction |
-| **Total** | **932** | **All passing** |
+| **Total** | **958** | **All passing** |
 
 ---
 

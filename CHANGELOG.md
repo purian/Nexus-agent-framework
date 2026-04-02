@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-04-02
+
+### Added
+- **Rich Agent-to-Agent Messaging** — Structured message system replacing plain-string mailboxes. `AgentMessage` type with message IDs, types (`request`, `response`, `notification`, `error`, `broadcast`), JSON payloads, metadata (priority, `inReplyTo`, `correlationId`, tags), and delivery status tracking. New coordinator methods: `sendStructuredMessage()`, `readStructuredMessages()` with type/tag filtering, `peekMessages()` (non-draining reads), `broadcastMessage()` (1-to-N), and `getMessageHistory()` (audit trail). Full backward compatibility — existing `sendMessage()`/`readMessages()` APIs continue to work unchanged
+- **SOC 2 Compliance Guide** — Comprehensive `docs/soc2-compliance.md` (1200+ lines) mapping Nexus security features to SOC 2 Trust Service Criteria. Covers all 12 security modules with configuration examples, deployment checklist, monitoring recommendations, and audit query recipes
+- **26 new tests** — Structured messaging (request-response, filtering, peek, broadcast, history), send_message tool (typed messages, JSON payloads, broadcast mode, renderToolUse updates). Total: 958 tests
+
+### Changed
+- `send_message` tool upgraded: supports `type`, `priority`, `inReplyTo`, `correlationId`, `tags` parameters, JSON object payloads, and broadcast via `agentId: "*"`
+- Agent messaging types exported: `AgentMessage`, `AgentMessageType`, `AgentMessagePriority`, `AgentMessageStatus`, `AgentMessageMetadata`
+
 ## [0.13.0] - 2026-04-02
 
 ### Added

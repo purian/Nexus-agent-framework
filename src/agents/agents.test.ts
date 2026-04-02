@@ -12,6 +12,7 @@ import type {
   EngineEvent,
   ToolContext,
   AgentConfig,
+  AgentMessage,
 } from "../types/index.js";
 
 // ============================================================================
@@ -538,10 +539,10 @@ describe("AgentCoordinator", () => {
   });
 
   // --------------------------------------------------------------------------
-  // Inter-Agent Messaging
+  // Inter-Agent Messaging (Legacy API — backward compatibility)
   // --------------------------------------------------------------------------
 
-  describe("sendMessage / readMessages", () => {
+  describe("sendMessage / readMessages (legacy)", () => {
     it("sends a message to an existing agent", () => {
       coordinator.spawnAgent(createAgentConfig({ id: "sender" }), provider);
       coordinator.spawnAgent(createAgentConfig({ id: "receiver" }), provider);
@@ -595,6 +596,388 @@ describe("AgentCoordinator", () => {
       expect(messages).toHaveLength(2);
       expect(messages[0].from).toBe("s1");
       expect(messages[1].from).toBe("s2");
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Structured Messaging
+  // --------------------------------------------------------------------------
+
+  describe("sendStructuredMessage", () => {
+    it("sends a structured message and returns its ID", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      const msgId = coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: { action: "summarize", data: [1, 2, 3] },
+        metadata: { priority: "high", tags: ["urgent"] },
+      });
+
+      expect(msgId).toMatch(/^msg-/);
+    });
+
+    it("delivers a structured message with all fields populated", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: "do the thing",
+        metadata: {
+          priority: "high",
+          correlationId: "task-42",
+          tags: ["research"],
+        },
+      });
+
+      const msgs = coordinator.readStructuredMessages("b");
+      expect(msgs).toHaveLength(1);
+
+      const msg = msgs[0];
+      expect(msg.from).toBe("a");
+      expect(msg.to).toBe("b");
+      expect(msg.type).toBe("request");
+      expect(msg.payload).toBe("do the thing");
+      expect(msg.metadata.priority).toBe("high");
+      expect(msg.metadata.correlationId).toBe("task-42");
+      expect(msg.metadata.tags).toEqual(["research"]);
+      expect(msg.timestamp).toBeTruthy();
+      expect(msg.status).toBe("read");
+    });
+
+    it("defaults to notification type when type is omitted", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        payload: "fyi",
+      });
+
+      const msgs = coordinator.readStructuredMessages("b");
+      expect(msgs[0].type).toBe("notification");
+    });
+
+    it("supports JSON object payloads", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      const payload = { status: "done", files: ["a.ts", "b.ts"], count: 2 };
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "response",
+        payload,
+      });
+
+      const msgs = coordinator.readStructuredMessages("b");
+      expect(msgs[0].payload).toEqual(payload);
+    });
+
+    it("throws when target agent does not exist", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+
+      expect(() =>
+        coordinator.sendStructuredMessage("a", "ghost", {
+          payload: "hello",
+        }),
+      ).toThrow(/not found/);
+    });
+
+    it("assigns unique sequential IDs to messages", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      const id1 = coordinator.sendStructuredMessage("a", "b", { payload: "1" });
+      const id2 = coordinator.sendStructuredMessage("a", "b", { payload: "2" });
+      const id3 = coordinator.sendStructuredMessage("a", "b", { payload: "3" });
+
+      expect(id1).not.toBe(id2);
+      expect(id2).not.toBe(id3);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Request-Response Pattern
+  // --------------------------------------------------------------------------
+
+  describe("request-response pattern", () => {
+    it("supports inReplyTo for correlating responses to requests", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "requester" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "responder" }), provider);
+
+      const requestId = coordinator.sendStructuredMessage(
+        "requester",
+        "responder",
+        { type: "request", payload: "What is 2+2?" },
+      );
+
+      // Responder reads, then replies
+      coordinator.readStructuredMessages("responder");
+
+      coordinator.sendStructuredMessage("responder", "requester", {
+        type: "response",
+        payload: "4",
+        metadata: { inReplyTo: requestId },
+      });
+
+      const replies = coordinator.readStructuredMessages("requester");
+      expect(replies).toHaveLength(1);
+      expect(replies[0].type).toBe("response");
+      expect(replies[0].payload).toBe("4");
+      expect(replies[0].metadata.inReplyTo).toBe(requestId);
+    });
+
+    it("supports correlationId to group a conversation", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      const corrId = "task-99";
+
+      coordinator.sendStructuredMessage("a", "b", {
+        payload: "step 1",
+        metadata: { correlationId: corrId },
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        payload: "step 2",
+        metadata: { correlationId: corrId },
+      });
+
+      const msgs = coordinator.readStructuredMessages("b");
+      expect(msgs).toHaveLength(2);
+      expect(msgs.every((m) => m.metadata.correlationId === corrId)).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Filtered Reads & Peek
+  // --------------------------------------------------------------------------
+
+  describe("readStructuredMessages with filters", () => {
+    it("filters by message type", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "notification",
+        payload: "info",
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: "do this",
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "error",
+        payload: "oops",
+      });
+
+      // Read only requests
+      const requests = coordinator.readStructuredMessages("b", {
+        type: "request",
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].payload).toBe("do this");
+
+      // The other two messages should still be in the mailbox
+      const remaining = coordinator.readStructuredMessages("b");
+      expect(remaining).toHaveLength(2);
+    });
+
+    it("filters by tag", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        payload: "tagged",
+        metadata: { tags: ["important", "review"] },
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        payload: "untagged",
+      });
+
+      const tagged = coordinator.readStructuredMessages("b", {
+        tag: "important",
+      });
+      expect(tagged).toHaveLength(1);
+      expect(tagged[0].payload).toBe("tagged");
+
+      // Untagged message remains
+      const rest = coordinator.readStructuredMessages("b");
+      expect(rest).toHaveLength(1);
+      expect(rest[0].payload).toBe("untagged");
+    });
+
+    it("combines type and tag filters", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: "urgent request",
+        metadata: { tags: ["urgent"] },
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: "normal request",
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "notification",
+        payload: "urgent notification",
+        metadata: { tags: ["urgent"] },
+      });
+
+      const urgentRequests = coordinator.readStructuredMessages("b", {
+        type: "request",
+        tag: "urgent",
+      });
+      expect(urgentRequests).toHaveLength(1);
+      expect(urgentRequests[0].payload).toBe("urgent request");
+
+      // Two messages remain
+      const rest = coordinator.readStructuredMessages("b");
+      expect(rest).toHaveLength(2);
+    });
+  });
+
+  describe("peekMessages", () => {
+    it("returns messages without draining the mailbox", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", { payload: "peek me" });
+
+      const peeked = coordinator.peekMessages("b");
+      expect(peeked).toHaveLength(1);
+      expect(peeked[0].payload).toBe("peek me");
+
+      // Mailbox should still have the message
+      const peekedAgain = coordinator.peekMessages("b");
+      expect(peekedAgain).toHaveLength(1);
+
+      // Drain it
+      const drained = coordinator.readStructuredMessages("b");
+      expect(drained).toHaveLength(1);
+
+      // Now empty
+      expect(coordinator.peekMessages("b")).toHaveLength(0);
+    });
+
+    it("supports type filter when peeking", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "request",
+        payload: "req",
+      });
+      coordinator.sendStructuredMessage("a", "b", {
+        type: "notification",
+        payload: "note",
+      });
+
+      const requests = coordinator.peekMessages("b", { type: "request" });
+      expect(requests).toHaveLength(1);
+      expect(requests[0].payload).toBe("req");
+    });
+
+    it("returns empty array for nonexistent agent", () => {
+      expect(coordinator.peekMessages("ghost")).toEqual([]);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Broadcast
+  // --------------------------------------------------------------------------
+
+  describe("broadcastMessage", () => {
+    it("sends a message to all agents except the sender", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "broadcaster" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "listener-1" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "listener-2" }), provider);
+
+      const ids = coordinator.broadcastMessage("broadcaster", "Hello all!", {
+        tags: ["announcement"],
+      });
+
+      expect(ids).toHaveLength(2);
+
+      const msgs1 = coordinator.readStructuredMessages("listener-1");
+      expect(msgs1).toHaveLength(1);
+      expect(msgs1[0].type).toBe("broadcast");
+      expect(msgs1[0].payload).toBe("Hello all!");
+      expect(msgs1[0].from).toBe("broadcaster");
+
+      const msgs2 = coordinator.readStructuredMessages("listener-2");
+      expect(msgs2).toHaveLength(1);
+
+      // Sender should NOT receive the broadcast
+      const senderMsgs = coordinator.readStructuredMessages("broadcaster");
+      expect(senderMsgs).toHaveLength(0);
+    });
+
+    it("returns empty array when only the sender exists", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "alone" }), provider);
+
+      const ids = coordinator.broadcastMessage("alone", "echo?");
+      expect(ids).toHaveLength(0);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Message History
+  // --------------------------------------------------------------------------
+
+  describe("getMessageHistory", () => {
+    it("returns all messages ever sent", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", { payload: "msg1" });
+      coordinator.sendStructuredMessage("b", "a", { payload: "msg2" });
+      coordinator.sendStructuredMessage("a", "b", { payload: "msg3" });
+
+      const history = coordinator.getMessageHistory();
+      expect(history).toHaveLength(3);
+    });
+
+    it("filters history by agent ID (as sender or recipient)", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "c" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", { payload: "ab" });
+      coordinator.sendStructuredMessage("b", "c", { payload: "bc" });
+      coordinator.sendStructuredMessage("c", "a", { payload: "ca" });
+
+      const historyA = coordinator.getMessageHistory("a");
+      expect(historyA).toHaveLength(2); // ab (sender) + ca (recipient)
+
+      const historyB = coordinator.getMessageHistory("b");
+      expect(historyB).toHaveLength(2); // ab (recipient) + bc (sender)
+    });
+
+    it("respects the limit parameter", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      for (let i = 0; i < 10; i++) {
+        coordinator.sendStructuredMessage("a", "b", { payload: `msg-${i}` });
+      }
+
+      const last3 = coordinator.getMessageHistory(undefined, 3);
+      expect(last3).toHaveLength(3);
+      expect(last3[0].payload).toBe("msg-7");
+      expect(last3[2].payload).toBe("msg-9");
+    });
+
+    it("persists history even after messages are read", () => {
+      coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+      coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+      coordinator.sendStructuredMessage("a", "b", { payload: "ephemeral" });
+      coordinator.readStructuredMessages("b"); // drain
+
+      const history = coordinator.getMessageHistory();
+      expect(history).toHaveLength(1);
+      expect(history[0].payload).toBe("ephemeral");
     });
   });
 
@@ -903,9 +1286,9 @@ describe("createSendMessageTool", () => {
     expect(typeof tool.execute).toBe("function");
   });
 
-  it("has a description mentioning message sending", () => {
+  it("has a description mentioning structured messaging", () => {
     const tool = createSendMessageTool(coordinator);
-    expect(tool.description).toContain("message");
+    expect(tool.description).toContain("structured message");
   });
 
   it("sends a message to an existing agent successfully", async () => {
@@ -980,6 +1363,97 @@ describe("createSendMessageTool", () => {
     expect(messages[0].from).toBe("unknown");
   });
 
+  it("sends a typed request message with metadata", async () => {
+    coordinator.spawnAgent(createAgentConfig({ id: "target" }), provider);
+
+    const tool = createSendMessageTool(coordinator);
+    const context = createMockToolContext({ agentId: "sender" });
+
+    const result = await tool.execute(
+      {
+        agentId: "target",
+        message: "Summarize this data",
+        type: "request",
+        priority: "high",
+        correlationId: "task-7",
+        tags: ["research"],
+      },
+      context,
+    );
+
+    expect(result.data).toContain("Message sent");
+    expect(result.data).toContain("type: request");
+    expect(result.data).toContain("Message ID: msg-");
+
+    // Verify structured delivery
+    const msgs = coordinator.readStructuredMessages("target");
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].type).toBe("request");
+    expect(msgs[0].metadata.priority).toBe("high");
+    expect(msgs[0].metadata.correlationId).toBe("task-7");
+    expect(msgs[0].metadata.tags).toEqual(["research"]);
+  });
+
+  it("sends a response with inReplyTo", async () => {
+    coordinator.spawnAgent(createAgentConfig({ id: "a" }), provider);
+    coordinator.spawnAgent(createAgentConfig({ id: "b" }), provider);
+
+    const tool = createSendMessageTool(coordinator);
+
+    const result = await tool.execute(
+      {
+        agentId: "b",
+        message: "The answer is 42",
+        type: "response",
+        inReplyTo: "msg-1",
+      },
+      createMockToolContext({ agentId: "a" }),
+    );
+
+    expect(result.data).toContain("type: response");
+
+    const msgs = coordinator.readStructuredMessages("b");
+    expect(msgs[0].metadata.inReplyTo).toBe("msg-1");
+  });
+
+  it("supports JSON object payloads via the tool", async () => {
+    coordinator.spawnAgent(createAgentConfig({ id: "target" }), provider);
+
+    const tool = createSendMessageTool(coordinator);
+    const context = createMockToolContext({ agentId: "sender" });
+
+    await tool.execute(
+      {
+        agentId: "target",
+        message: { status: "done", files: ["a.ts"] } as unknown as string,
+      },
+      context,
+    );
+
+    const msgs = coordinator.readStructuredMessages("target");
+    expect(msgs[0].payload).toEqual({ status: "done", files: ["a.ts"] });
+  });
+
+  it("broadcasts to all agents with agentId '*'", async () => {
+    coordinator.spawnAgent(createAgentConfig({ id: "sender" }), provider);
+    coordinator.spawnAgent(createAgentConfig({ id: "r1" }), provider);
+    coordinator.spawnAgent(createAgentConfig({ id: "r2" }), provider);
+
+    const tool = createSendMessageTool(coordinator);
+    const context = createMockToolContext({ agentId: "sender" });
+
+    const result = await tool.execute(
+      { agentId: "*", message: "Attention everyone" },
+      context,
+    );
+
+    expect(result.data).toContain("Broadcast sent to 2 agent(s)");
+
+    expect(coordinator.readStructuredMessages("r1")).toHaveLength(1);
+    expect(coordinator.readStructuredMessages("r2")).toHaveLength(1);
+    expect(coordinator.readStructuredMessages("sender")).toHaveLength(0);
+  });
+
   it("isConcurrencySafe returns true", () => {
     const tool = createSendMessageTool(coordinator);
 
@@ -1020,6 +1494,29 @@ describe("createSendMessageTool", () => {
 
     expect(rendered).toContain("...");
     expect(rendered.length).toBeLessThan(longMsg.length + 50);
+  });
+
+  it("renderToolUse shows message type when provided", () => {
+    const tool = createSendMessageTool(coordinator);
+
+    const rendered = tool.renderToolUse!({
+      agentId: "agent-123",
+      message: "Do this",
+      type: "request",
+    });
+
+    expect(rendered).toContain("[request]");
+  });
+
+  it("renderToolUse shows 'all agents' for broadcast", () => {
+    const tool = createSendMessageTool(coordinator);
+
+    const rendered = tool.renderToolUse!({
+      agentId: "*",
+      message: "Attention",
+    });
+
+    expect(rendered).toContain("all agents");
   });
 
   it("renderResult passes through the output string", () => {

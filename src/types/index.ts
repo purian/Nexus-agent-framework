@@ -258,6 +258,58 @@ export interface AgentState {
 }
 
 // ============================================================================
+// Agent Messaging Types
+// ============================================================================
+
+/** Types of messages that can be sent between agents */
+export type AgentMessageType =
+  | "request"       // Ask another agent to do something; expects a response
+  | "response"      // Reply to a request
+  | "notification"  // One-way informational message
+  | "error"         // Error notification
+  | "broadcast";    // Message sent to multiple agents
+
+/** Priority levels for agent messages */
+export type AgentMessagePriority = "high" | "normal" | "low";
+
+/** Delivery status of a message */
+export type AgentMessageStatus = "pending" | "delivered" | "read";
+
+/** Structured message exchanged between agents */
+export interface AgentMessage {
+  /** Unique message ID */
+  id: string;
+  /** Sender agent ID */
+  from: string;
+  /** Recipient agent ID */
+  to: string;
+  /** Message type */
+  type: AgentMessageType;
+  /** Message content — plain text or structured JSON payload */
+  payload: unknown;
+  /** Optional metadata for routing, correlation, and filtering */
+  metadata: AgentMessageMetadata;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+  /** Current delivery status */
+  status: AgentMessageStatus;
+}
+
+/** Metadata attached to an agent message */
+export interface AgentMessageMetadata {
+  /** Priority level (default: "normal") */
+  priority?: AgentMessagePriority;
+  /** Message ID this is replying to (for request-response patterns) */
+  inReplyTo?: string;
+  /** Correlation ID to group related messages (e.g., same task) */
+  correlationId?: string;
+  /** Tags for filtering and categorization */
+  tags?: string[];
+  /** Arbitrary key-value data */
+  custom?: Record<string, unknown>;
+}
+
+// ============================================================================
 // Memory Types
 // ============================================================================
 

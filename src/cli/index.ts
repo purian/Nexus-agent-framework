@@ -18,7 +18,7 @@ import type {
 // Version & Program Setup
 // ============================================================================
 
-const VERSION = "0.13.0";
+const VERSION = "0.14.0";
 
 const program = new Command()
   .name("nexus")

@@ -3,6 +3,9 @@ import { NexusEngine } from "../core/engine.js";
 import { BackgroundAgentManager } from "./background.js";
 import type {
   AgentConfig,
+  AgentMessage,
+  AgentMessageMetadata,
+  AgentMessageType,
   AgentState,
   EngineEvent,
   LLMProvider,
@@ -37,9 +40,14 @@ export class AgentCoordinator {
   /** Maps agent ID to worktree ID for agents spawned with isolation: "worktree" */
   private agentWorktrees: Map<string, string> = new Map();
 
-  /** Messages sent between agents, keyed by recipient agent ID */
-  private mailboxes: Map<string, Array<{ from: string; message: string }>> =
-    new Map();
+  /** Structured message mailboxes, keyed by recipient agent ID */
+  private mailboxes: Map<string, AgentMessage[]> = new Map();
+
+  /** Global message history for audit / replay */
+  private messageHistory: AgentMessage[] = [];
+
+  /** Auto-incrementing counter for message IDs */
+  private messageSeq = 0;
 
   constructor(
     config: NexusConfig,
@@ -316,27 +324,164 @@ export class AgentCoordinator {
   // ---------------------------------------------------------------------------
 
   /**
-   * Send a message from one agent to another.
+   * Send a plain-text message from one agent to another.
+   * Backward-compatible convenience wrapper around sendStructuredMessage.
    */
   sendMessage(fromAgentId: string, toAgentId: string, message: string): void {
-    const mailbox = this.mailboxes.get(toAgentId);
-    if (!mailbox) {
-      throw new Error(`Agent "${toAgentId}" not found`);
-    }
-    mailbox.push({ from: fromAgentId, message });
+    this.sendStructuredMessage(fromAgentId, toAgentId, {
+      type: "notification",
+      payload: message,
+    });
   }
 
   /**
    * Read and drain the mailbox for an agent.
+   * Backward-compatible — returns the legacy { from, message } shape.
    */
   readMessages(
     agentId: string,
   ): Array<{ from: string; message: string }> {
+    const structured = this.readStructuredMessages(agentId);
+    return structured.map((m) => ({
+      from: m.from,
+      message: typeof m.payload === "string" ? m.payload : JSON.stringify(m.payload),
+    }));
+  }
+
+  /**
+   * Send a structured message from one agent to another.
+   * Returns the generated message ID.
+   */
+  sendStructuredMessage(
+    fromAgentId: string,
+    toAgentId: string,
+    options: {
+      type?: AgentMessageType;
+      payload: unknown;
+      metadata?: AgentMessageMetadata;
+    },
+  ): string {
+    const mailbox = this.mailboxes.get(toAgentId);
+    if (!mailbox) {
+      throw new Error(`Agent "${toAgentId}" not found`);
+    }
+
+    const id = `msg-${++this.messageSeq}`;
+    const msg: AgentMessage = {
+      id,
+      from: fromAgentId,
+      to: toAgentId,
+      type: options.type ?? "notification",
+      payload: options.payload,
+      metadata: options.metadata ?? {},
+      timestamp: new Date().toISOString(),
+      status: "delivered",
+    };
+
+    mailbox.push(msg);
+    this.messageHistory.push(msg);
+    return id;
+  }
+
+  /**
+   * Broadcast a message to all agents (except the sender).
+   * Returns the generated message IDs.
+   */
+  broadcastMessage(
+    fromAgentId: string,
+    payload: unknown,
+    metadata?: AgentMessageMetadata,
+  ): string[] {
+    const ids: string[] = [];
+    for (const [agentId] of this.mailboxes) {
+      if (agentId !== fromAgentId) {
+        const id = this.sendStructuredMessage(fromAgentId, agentId, {
+          type: "broadcast",
+          payload,
+          metadata,
+        });
+        ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Read and drain structured messages for an agent.
+   * Optionally filter by message type or tags.
+   */
+  readStructuredMessages(
+    agentId: string,
+    filter?: { type?: AgentMessageType; tag?: string },
+  ): AgentMessage[] {
     const mailbox = this.mailboxes.get(agentId);
     if (!mailbox) return [];
-    const messages = [...mailbox];
-    mailbox.length = 0;
-    return messages;
+
+    let matched: AgentMessage[];
+    let remaining: AgentMessage[];
+
+    if (filter) {
+      matched = [];
+      remaining = [];
+      for (const msg of mailbox) {
+        const typeMatch = !filter.type || msg.type === filter.type;
+        const tagMatch =
+          !filter.tag || (msg.metadata.tags?.includes(filter.tag) ?? false);
+        if (typeMatch && tagMatch) {
+          msg.status = "read";
+          matched.push(msg);
+        } else {
+          remaining.push(msg);
+        }
+      }
+      mailbox.length = 0;
+      mailbox.push(...remaining);
+    } else {
+      matched = [...mailbox];
+      for (const msg of matched) {
+        msg.status = "read";
+      }
+      mailbox.length = 0;
+    }
+
+    return matched;
+  }
+
+  /**
+   * Peek at messages without draining the mailbox.
+   */
+  peekMessages(
+    agentId: string,
+    filter?: { type?: AgentMessageType; tag?: string },
+  ): AgentMessage[] {
+    const mailbox = this.mailboxes.get(agentId);
+    if (!mailbox) return [];
+
+    if (!filter) return [...mailbox];
+
+    return mailbox.filter((msg) => {
+      const typeMatch = !filter.type || msg.type === filter.type;
+      const tagMatch =
+        !filter.tag || (msg.metadata.tags?.includes(filter.tag) ?? false);
+      return typeMatch && tagMatch;
+    });
+  }
+
+  /**
+   * Get the full message history (all messages ever sent), optionally
+   * filtered by agent ID (as sender or recipient).
+   */
+  getMessageHistory(agentId?: string, limit?: number): AgentMessage[] {
+    let history = this.messageHistory;
+    if (agentId) {
+      history = history.filter(
+        (m) => m.from === agentId || m.to === agentId,
+      );
+    }
+    if (limit !== undefined) {
+      history = history.slice(-limit);
+    }
+    return history;
   }
 
   // ---------------------------------------------------------------------------
