@@ -6,7 +6,9 @@ import type {
   PermissionMode,
   PermissionRule,
   PermissionSource,
+  RBACPolicy,
 } from "../types/index.js";
+import { RBACManager } from "./rbac.js";
 
 // Priority order: higher number = higher priority.
 const SOURCE_PRIORITY: Record<PermissionSource, number> = {
@@ -127,10 +129,18 @@ function ruleMatches(
 export class PermissionManager implements PermissionContext {
   mode: PermissionMode;
   rules: PermissionRule[];
+  rbac?: RBACManager;
 
-  constructor(mode: PermissionMode = "default", rules: PermissionRule[] = []) {
+  constructor(
+    mode: PermissionMode = "default",
+    rules: PermissionRule[] = [],
+    rbacPolicy?: RBACPolicy,
+  ) {
     this.mode = mode;
     this.rules = [...rules];
+    if (rbacPolicy) {
+      this.rbac = new RBACManager(rbacPolicy);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -141,6 +151,7 @@ export class PermissionManager implements PermissionContext {
     return new PermissionManager(
       config.permissionMode,
       config.permissionRules,
+      config.rbac,
     );
   }
 
@@ -174,6 +185,7 @@ export class PermissionManager implements PermissionContext {
   checkPermission(
     toolName: string,
     input: Record<string, unknown>,
+    agentId?: string,
   ): PermissionDecision {
     // Fast-path: mode-level overrides.
     if (this.mode === "allowAll") {
@@ -191,7 +203,11 @@ export class PermissionManager implements PermissionContext {
       return this.checkPlanMode(toolName, input);
     }
 
-    // Default mode: evaluate rules.
+    // Default mode: evaluate rules, optionally including RBAC rules.
+    if (agentId && this.rbac) {
+      return this.evaluateRulesWithRBAC(toolName, input, agentId);
+    }
+
     return this.evaluateRules(toolName, input);
   }
 
@@ -220,6 +236,33 @@ export class PermissionManager implements PermissionContext {
       behavior: "deny",
       reason: `Tool "${toolName}" is not allowed in plan mode (read-only)`,
     };
+  }
+
+  private evaluateRulesWithRBAC(
+    toolName: string,
+    input: Record<string, unknown>,
+    agentId: string,
+  ): PermissionDecision {
+    const rbacRules = this.rbac!.resolvePermissions(agentId);
+    const combinedRules = [...this.rules, ...rbacRules];
+
+    const inputString = extractInputString(toolName, input);
+
+    // Collect all matching rules (including wildcard tool matches from RBAC).
+    const matches = combinedRules.filter((rule) => {
+      // Handle wildcard toolName from RBAC roles (e.g., admin: "*" allows all).
+      if (rule.toolName === "*") {
+        return true;
+      }
+      return ruleMatches(rule, toolName, inputString);
+    });
+
+    if (matches.length === 0) {
+      return this.defaultDecision(toolName);
+    }
+
+    const best = this.selectHighestPriority(matches);
+    return this.behaviorToDecision(best.behavior, toolName);
   }
 
   private evaluateRules(

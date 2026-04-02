@@ -201,6 +201,37 @@ export interface PermissionContext {
 }
 
 // ============================================================================
+// RBAC Types
+// ============================================================================
+
+export interface RBACRole {
+  /** Unique role name (e.g., "admin", "developer", "viewer") */
+  name: string;
+  /** Human-readable description */
+  description?: string;
+  /** Permission rules granted by this role */
+  permissions: PermissionRule[];
+  /** Roles this role inherits from (permissions are merged) */
+  inherits?: string[];
+}
+
+export interface RBACPolicy {
+  /** Available roles */
+  roles: RBACRole[];
+  /** Default role assigned when no specific assignment exists */
+  defaultRole?: string;
+  /** Agent-to-role assignments */
+  assignments: RBACAssignment[];
+}
+
+export interface RBACAssignment {
+  /** Agent ID or pattern (e.g., "agent-*" for all agents matching) */
+  agentId: string;
+  /** Assigned role names */
+  roles: string[];
+}
+
+// ============================================================================
 // Agent Types
 // ============================================================================
 
@@ -229,6 +260,17 @@ export interface AgentState {
 // ============================================================================
 // Memory Types
 // ============================================================================
+
+export interface EncryptionConfig {
+  /** Enable encryption for memory entries */
+  enabled: boolean;
+  /** Master key (hex-encoded) — if not provided, derived from passphrase */
+  masterKey?: string;
+  /** Passphrase for key derivation (used when masterKey is not set) */
+  passphrase?: string;
+  /** Fields to encrypt (default: ["content"]) */
+  encryptedFields?: Array<"name" | "description" | "content" | "tags">;
+}
 
 export type MemoryType = "user" | "feedback" | "project" | "reference";
 
@@ -314,6 +356,12 @@ export interface NexusConfig {
   thinking: ThinkingConfig;
   /** Sandbox configuration for running bash commands in Docker containers */
   sandbox?: SandboxConfig;
+  /** Role-Based Access Control policy */
+  rbac?: RBACPolicy;
+  /** Encryption configuration for memory at-rest encryption */
+  encryption?: EncryptionConfig;
+  /** Rate limiting configuration */
+  rateLimits?: RateLimitConfig;
 }
 
 export interface MCPOAuthConfig {
@@ -370,6 +418,38 @@ export interface SandboxConfig {
   env?: Record<string, string>;
   /** Max container lifetime in seconds (default: 300) */
   maxLifetime?: number;
+}
+
+// ============================================================================
+// Rate Limiting Types
+// ============================================================================
+
+export interface RateLimitConfig {
+  /** Enable rate limiting */
+  enabled: boolean;
+  /** Default rate limit applied to all tools (if no specific limit) */
+  defaultLimit?: RateLimitRule;
+  /** Per-tool rate limits (keyed by tool name or glob pattern) */
+  toolLimits?: Record<string, RateLimitRule>;
+  /** Per-agent rate limits (keyed by agent ID or glob pattern) */
+  agentLimits?: Record<string, RateLimitRule>;
+}
+
+export interface RateLimitRule {
+  /** Maximum number of executions allowed in the window */
+  maxExecutions: number;
+  /** Time window in seconds */
+  windowSeconds: number;
+}
+
+export interface RateLimitDecision {
+  allowed: boolean;
+  /** Seconds until the next execution is allowed (when not allowed) */
+  retryAfterSeconds?: number;
+  /** Current count in the window */
+  currentCount: number;
+  /** Maximum allowed in the window */
+  maxCount: number;
 }
 
 // ============================================================================

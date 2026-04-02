@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-04-02
+
+### Added
+- **Role-Based Access Control (RBAC)** — Team-level permission policies with role definitions, inheritance chains, and agent-to-role assignments. `RBACManager` manages role registry with built-in `admin`, `developer`, and `viewer` roles. Roles support inheritance with circular dependency detection. Agent assignments support glob patterns (e.g., `"agent-*"`). Integrates into `PermissionManager` — `checkPermission()` now accepts optional `agentId` to merge RBAC rules with existing permission rules
+- **Encrypted Memory** — AES-256-GCM at-rest encryption for memory entries. `MemoryEncryption` supports master key (hex) or passphrase-based key derivation via scrypt. Per-field encryption (default: content only). Encrypted values use versioned `enc:v1:` prefix for forward compatibility. Transparent decrypt for legacy unencrypted data. Search falls back to in-memory matching when encryption is active (FTS5 cannot search ciphertext)
+- **Rate Limiting** — Sliding window rate limiter for tool executions. `RateLimiter` supports per-tool and per-agent limits with glob pattern matching. Configurable time windows and max execution counts. Integrated into engine — rate-limited tools return descriptive error with retry-after timing. Peek mode for checking limits without recording
+- **91 new tests** — RBAC (34), encrypted memory (29), rate limiter (28). Total: 711 tests
+
+### Changed
+- `PermissionManager` accepts optional `RBACPolicy` and `agentId` parameter in `checkPermission()`
+- `MemoryManager` accepts optional `EncryptionConfig` for transparent encrypt/decrypt
+- `NexusEngine` checks rate limits after permissions but before tool execution
+- `NexusConfig` extended with `rbac`, `encryption`, and `rateLimits` fields
+
 ## [0.10.0] - 2026-04-02
 
 ### Added

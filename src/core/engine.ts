@@ -10,6 +10,7 @@ import type {
   NexusConfig,
   PermissionContext,
   PermissionDecision,
+  RateLimitDecision,
   StopReason,
   TextBlock,
   ThinkingBlock,
@@ -23,6 +24,7 @@ import type {
 import { ContextCompressor } from "./context-compressor.js";
 import { PlanExecutor } from "./plan-mode.js";
 import type { Plan } from "./plan-mode.js";
+import { RateLimiter } from "./rate-limiter.js";
 import { ToolExecutor } from "./tool-executor.js";
 
 /**
@@ -52,6 +54,7 @@ export class NexusEngine extends EventEmitter<{
   };
   private abortController: AbortController = new AbortController();
   private compressor: ContextCompressor;
+  private rateLimiter?: RateLimiter;
   private planMode = false;
   private planExecutor: PlanExecutor = new PlanExecutor();
 
@@ -65,6 +68,9 @@ export class NexusEngine extends EventEmitter<{
     this.config = config;
     this.permissions = permissions;
     this.compressor = new ContextCompressor(config.contextTokens ?? 100_000);
+    if (config.rateLimits) {
+      this.rateLimiter = new RateLimiter(config.rateLimits);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -461,6 +467,27 @@ export class NexusEngine extends EventEmitter<{
           type: "tool_result",
           tool_use_id: block.id,
           content: "Permission denied by user",
+          is_error: true,
+        };
+      }
+    }
+
+    // Rate limit check (after permissions, before execution)
+    if (this.rateLimiter) {
+      const rateLimitDecision = this.rateLimiter.checkAndRecord(block.name);
+      if (!rateLimitDecision.allowed) {
+        const retryMsg = rateLimitDecision.retryAfterSeconds != null
+          ? ` Retry after ${rateLimitDecision.retryAfterSeconds.toFixed(1)} seconds.`
+          : "";
+        const errorMsg = `Rate limited: ${block.name} has reached ${rateLimitDecision.maxCount} executions in the current window.${retryMsg}`;
+        this.emit("event", {
+          type: "error",
+          error: new Error(errorMsg),
+        });
+        return {
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: errorMsg,
           is_error: true,
         };
       }

@@ -18,6 +18,7 @@ export { AuditLogger } from "./core/audit-logger.js";
 export { ContextCompressor } from "./core/context-compressor.js";
 export { PlanExecutor } from "./core/plan-mode.js";
 export type { Plan, PlannedAction } from "./core/plan-mode.js";
+export { RateLimiter } from "./core/rate-limiter.js";
 
 // Skills
 export { SkillLoader } from "./skills/loader.js";
@@ -55,6 +56,11 @@ export type {
   PermissionDecision,
   PermissionContext,
 
+  // RBAC
+  RBACRole,
+  RBACPolicy,
+  RBACAssignment,
+
   // Agents
   AgentConfig,
   AgentState,
@@ -63,6 +69,7 @@ export type {
   MemoryType,
   MemoryEntry,
   MemoryStore,
+  EncryptionConfig,
 
   // Platforms
   PlatformAdapter,
@@ -79,6 +86,11 @@ export type {
   MCPAuthConfig,
   SandboxConfig,
 
+  // Rate Limiting
+  RateLimitConfig,
+  RateLimitRule,
+  RateLimitDecision,
+
   // Engine Events
   EngineEvent,
 } from "./types/index.js";
@@ -90,6 +102,7 @@ export type { SandboxExecResult } from "./tools/sandbox.js";
 
 // Permissions
 export { PermissionManager } from "./permissions/index.js";
+export { RBACManager } from "./permissions/rbac.js";
 
 // MCP
 export { MCPClientManager } from "./mcp/client.js";
@@ -112,6 +125,7 @@ export type {
 
 // Memory
 export { MemoryManager } from "./memory/index.js";
+export { MemoryEncryption } from "./memory/encryption.js";
 
 // Plugins
 export { PluginLoader } from "./plugins/index.js";

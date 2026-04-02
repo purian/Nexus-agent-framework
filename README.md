@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-620%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-711%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 620 tests covering all core modules.
+Nexus has a comprehensive test suite with 711 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -935,7 +935,10 @@ npx vitest run src/permissions/index.test.ts
 | Self-Hosting | 33 | Config, system prompt, permissions, root detection |
 | OAuth for MCP | 26 | Token fetch, refresh, caching, expiry, revocation |
 | Sandboxed Execution | 25 | Docker args, execute, timeout, abort, cleanup |
-| **Total** | **620** | **All passing** |
+| RBAC | 34 | Roles, assignments, inheritance, permissions, built-in roles |
+| Encrypted Memory | 29 | AES-256-GCM encrypt/decrypt, key derivation, MemoryManager integration |
+| Rate Limiter | 28 | Sliding window, per-tool/agent limits, engine integration |
+| **Total** | **711** | **All passing** |
 
 ---
 
@@ -958,7 +961,8 @@ nexus/
 │   │       ├── ollama.ts         # Ollama local model provider
 │   │       └── fallback.ts       # Auto-failover provider chain
 │   │   ├── context-compressor.ts # Auto-summarization for long sessions
-│   │   └── audit-logger.ts       # JSONL tool execution logging
+│   │   ├── audit-logger.ts        # JSONL tool execution logging
+│   │   └── rate-limiter.ts       # Sliding window rate limiter
 │   ├── tools/
 │   │   ├── index.ts              # Tool exports + createDefaultTools()
 │   │   ├── bash.ts               # Shell execution (with optional Docker sandbox)
@@ -970,7 +974,8 @@ nexus/
 │   │   ├── grep.ts               # Content search
 │   │   └── web-fetch.ts          # HTTP fetching
 │   ├── permissions/
-│   │   └── index.ts              # PermissionManager
+│   │   ├── index.ts              # PermissionManager
+│   │   └── rbac.ts               # Role-based access control
 │   ├── mcp/
 │   │   ├── index.ts              # MCP exports
 │   │   ├── client.ts             # MCP client (consume tools)
@@ -983,6 +988,7 @@ nexus/
 │   │   └── message-tool.ts       # Inter-agent messaging
 │   ├── memory/
 │   │   ├── index.ts              # MemoryManager (SQLite)
+│   │   ├── encryption.ts         # AES-256-GCM at-rest encryption
 │   │   └── tool.ts               # Memory tool for LLM
 │   ├── skills/
 │   │   ├── index.ts              # Skills exports

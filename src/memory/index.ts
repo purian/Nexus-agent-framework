@@ -4,7 +4,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import type { MemoryEntry, MemoryStore, MemoryType } from "../types/index.js";
+import type { EncryptionConfig, MemoryEntry, MemoryStore, MemoryType } from "../types/index.js";
+import { MemoryEncryption } from "./encryption.js";
 
 /**
  * MemoryManager — SQLite-backed persistent memory store.
@@ -15,14 +16,16 @@ import type { MemoryEntry, MemoryStore, MemoryType } from "../types/index.js";
  */
 export class MemoryManager implements MemoryStore {
   private db: Database.Database;
+  private encryption: MemoryEncryption | null;
 
-  constructor(dbPath?: string) {
+  constructor(dbPath?: string, encryption?: MemoryEncryption | null) {
     const resolvedPath = dbPath ?? join(homedir(), ".nexus", "memory.db");
     mkdirSync(dirname(resolvedPath), { recursive: true });
 
     this.db = new Database(resolvedPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    this.encryption = encryption ?? null;
     this.initialize();
   }
 
@@ -31,6 +34,19 @@ export class MemoryManager implements MemoryStore {
    */
   static create(dataDirectory: string): MemoryManager {
     return new MemoryManager(join(dataDirectory, "memory.db"));
+  }
+
+  /**
+   * Factory method for creating a MemoryManager with encryption enabled.
+   */
+  static createWithEncryption(
+    dataDirectory: string,
+    encryptionConfig: EncryptionConfig,
+  ): MemoryManager {
+    const enc = encryptionConfig.enabled
+      ? new MemoryEncryption(encryptionConfig)
+      : null;
+    return new MemoryManager(join(dataDirectory, "memory.db"), enc);
   }
 
   // --------------------------------------------------------------------------
@@ -43,6 +59,16 @@ export class MemoryManager implements MemoryStore {
     const id = randomUUID();
     const now = new Date();
 
+    // Encrypt fields before persisting, if encryption is configured.
+    const finalEntry = this.encryption
+      ? this.encryption.encryptEntry({
+          name: entry.name,
+          description: entry.description,
+          content: entry.content,
+          tags: entry.tags,
+        })
+      : { name: entry.name, description: entry.description, content: entry.content, tags: entry.tags };
+
     const stmt = this.db.prepare(`
       INSERT INTO memories (id, type, name, description, content, tags, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -51,14 +77,15 @@ export class MemoryManager implements MemoryStore {
     stmt.run(
       id,
       entry.type,
-      entry.name,
-      entry.description,
-      entry.content,
-      JSON.stringify(entry.tags ?? []),
+      finalEntry.name,
+      finalEntry.description,
+      finalEntry.content,
+      JSON.stringify(finalEntry.tags ?? []),
       now.toISOString(),
       now.toISOString(),
     );
 
+    // Return the plaintext entry to the caller.
     return {
       id,
       type: entry.type,
@@ -76,10 +103,20 @@ export class MemoryManager implements MemoryStore {
       .prepare("SELECT * FROM memories WHERE id = ?")
       .get(id) as MemoryRow | undefined;
 
-    return row ? this.rowToEntry(row) : null;
+    if (!row) return null;
+    const entry = this.rowToEntry(row);
+    return this.encryption ? this.decryptMemoryEntry(entry) : entry;
   }
 
   async search(query: string, type?: MemoryType): Promise<MemoryEntry[]> {
+    // When encryption is enabled, FTS5 cannot search encrypted content.
+    // Fall back to fetching all entries, decrypting them, and performing
+    // case-insensitive substring matching in memory. This is acceptable for
+    // the typical memory store size (hundreds to low thousands of entries).
+    if (this.encryption) {
+      return this.searchEncrypted(query, type);
+    }
+
     // Use the FTS5 table for full-text search. The MATCH syntax requires
     // escaping double-quotes inside the query to avoid injection.
     const ftsQuery = query.replace(/"/g, '""');
@@ -125,13 +162,17 @@ export class MemoryManager implements MemoryStore {
         .all() as MemoryRow[];
     }
 
-    return rows.map((row) => this.rowToEntry(row));
+    const entries = rows.map((row) => this.rowToEntry(row));
+    return this.encryption
+      ? entries.map((e) => this.decryptMemoryEntry(e))
+      : entries;
   }
 
   async update(
     id: string,
     updates: Partial<MemoryEntry>,
   ): Promise<MemoryEntry> {
+    // get() already decrypts, so `existing` has plaintext fields.
     const existing = await this.get(id);
     if (!existing) {
       throw new Error(`Memory entry not found: ${id}`);
@@ -146,6 +187,16 @@ export class MemoryManager implements MemoryStore {
       tags: updates.tags ?? existing.tags,
     };
 
+    // Re-encrypt for storage.
+    const finalMerged = this.encryption
+      ? this.encryption.encryptEntry({
+          name: merged.name,
+          description: merged.description,
+          content: merged.content,
+          tags: merged.tags,
+        })
+      : { name: merged.name, description: merged.description, content: merged.content, tags: merged.tags };
+
     this.db
       .prepare(
         `UPDATE memories
@@ -154,14 +205,15 @@ export class MemoryManager implements MemoryStore {
       )
       .run(
         merged.type,
-        merged.name,
-        merged.description,
-        merged.content,
-        JSON.stringify(merged.tags ?? []),
+        finalMerged.name,
+        finalMerged.description,
+        finalMerged.content,
+        JSON.stringify(finalMerged.tags ?? []),
         now.toISOString(),
         id,
       );
 
+    // Return plaintext to caller.
     return {
       id,
       ...merged,
@@ -240,6 +292,49 @@ export class MemoryManager implements MemoryStore {
         VALUES (new.rowid, new.id, new.name, new.description, new.content);
       END;
     `);
+  }
+
+  /**
+   * In-memory search fallback for encrypted stores. Decrypts all entries
+   * and performs case-insensitive substring matching across name, description,
+   * and content fields.
+   */
+  private async searchEncrypted(
+    query: string,
+    type?: MemoryType,
+  ): Promise<MemoryEntry[]> {
+    const all = await this.list(type); // list() already decrypts
+    const lowerQuery = query.toLowerCase();
+
+    return all.filter((entry) => {
+      const haystack = [entry.name, entry.description, entry.content]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(lowerQuery);
+    });
+  }
+
+  /**
+   * Decrypt the encrypted fields of a MemoryEntry using the configured
+   * MemoryEncryption instance.
+   */
+  private decryptMemoryEntry(entry: MemoryEntry): MemoryEntry {
+    if (!this.encryption) return entry;
+
+    const decrypted = this.encryption.decryptEntry({
+      name: entry.name,
+      description: entry.description,
+      content: entry.content,
+      tags: entry.tags,
+    });
+
+    return {
+      ...entry,
+      name: decrypted.name,
+      description: decrypted.description,
+      content: decrypted.content,
+      tags: decrypted.tags,
+    };
   }
 
   private rowToEntry(row: MemoryRow): MemoryEntry {
