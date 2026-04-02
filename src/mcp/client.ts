@@ -8,6 +8,7 @@ import type {
   ToolResult,
   MCPServerConfig,
 } from "../types/index.js";
+import { OAuthTokenManager } from "./oauth.js";
 
 // ============================================================================
 // Types
@@ -39,6 +40,14 @@ export interface Resource {
 
 export class MCPClientManager {
   private connections = new Map<string, MCPConnection>();
+  private tokenManager = new OAuthTokenManager();
+
+  /**
+   * Get the OAuth token manager instance (for testing or advanced usage).
+   */
+  getTokenManager(): OAuthTokenManager {
+    return this.tokenManager;
+  }
 
   /**
    * Connect to an MCP server and discover its tools.
@@ -48,7 +57,7 @@ export class MCPClientManager {
       throw new Error(`MCP server "${config.name}" is already connected`);
     }
 
-    const transport = this.createTransport(config);
+    const transport = await this.createTransport(config);
     const client = new Client(
       { name: "nexus", version: "1.0.0" },
       { capabilities: { tools: {}, resources: {} } as Record<string, unknown> },
@@ -75,6 +84,9 @@ export class MCPClientManager {
     if (!conn) {
       throw new Error(`MCP server "${name}" is not connected`);
     }
+    if (conn.config.auth) {
+      await this.tokenManager.revokeToken(name);
+    }
     await conn.client.close();
     this.connections.delete(name);
   }
@@ -85,6 +97,7 @@ export class MCPClientManager {
   async disconnectAll(): Promise<void> {
     const names = [...this.connections.keys()];
     await Promise.allSettled(names.map((name) => this.disconnectServer(name)));
+    this.tokenManager.dispose();
   }
 
   /**
@@ -151,9 +164,9 @@ export class MCPClientManager {
     return conn;
   }
 
-  private createTransport(
+  private async createTransport(
     config: MCPServerConfig,
-  ): StdioClientTransport | SSEClientTransport {
+  ): Promise<StdioClientTransport | SSEClientTransport> {
     switch (config.transport) {
       case "stdio": {
         if (!config.command) {
@@ -177,6 +190,21 @@ export class MCPClientManager {
             `MCP server "${config.name}": ${config.transport} transport requires "url"`,
           );
         }
+
+        if (config.auth) {
+          const token = await this.tokenManager.getAccessToken(
+            config.name,
+            config.auth,
+          );
+          return new SSEClientTransport(new URL(config.url), {
+            requestInit: {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            },
+          });
+        }
+
         return new SSEClientTransport(new URL(config.url));
       }
 

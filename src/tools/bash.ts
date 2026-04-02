@@ -6,6 +6,7 @@ import type {
   ToolResult,
   PermissionDecision,
 } from "../types/index.js";
+import { DockerSandbox } from "./sandbox.js";
 
 const inputSchema = z.object({
   command: z.string().describe("The shell command to execute"),
@@ -65,6 +66,26 @@ export const bashTool: Tool<BashInput, BashOutput> = {
   },
 
   async execute(input: BashInput, context: ToolContext): Promise<ToolResult<BashOutput>> {
+    // Use Docker sandbox if enabled
+    if (context.config.sandbox?.enabled) {
+      const sandbox = new DockerSandbox(context.config.sandbox);
+      const result = await sandbox.execute({
+        command: input.command,
+        workingDirectory: context.workingDirectory,
+        timeout: input.timeout ?? 120,
+        abortSignal: context.abortSignal,
+        onStdout: (chunk) => context.onProgress?.({ toolUseId: "", message: chunk }),
+        onStderr: (chunk) => context.onProgress?.({ toolUseId: "", message: chunk }),
+      });
+      return {
+        data: {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        },
+      };
+    }
+
     const timeoutMs = (input.timeout ?? 120) * 1000;
 
     return new Promise((resolve) => {

@@ -312,7 +312,30 @@ export interface NexusConfig {
   maxConcurrentTools: number;
   /** Enable extended thinking */
   thinking: ThinkingConfig;
+  /** Sandbox configuration for running bash commands in Docker containers */
+  sandbox?: SandboxConfig;
 }
+
+export interface MCPOAuthConfig {
+  /** OAuth provider type */
+  provider: "oauth2";
+  /** Authorization endpoint URL */
+  authorizationUrl: string;
+  /** Token endpoint URL */
+  tokenUrl: string;
+  /** Client ID */
+  clientId: string;
+  /** Client secret (should come from env vars) */
+  clientSecret?: string;
+  /** OAuth scopes */
+  scopes?: string[];
+  /** Token refresh buffer in seconds (refresh this many seconds before expiry, default 60) */
+  refreshBufferSeconds?: number;
+  /** Custom headers to include in token requests */
+  tokenRequestHeaders?: Record<string, string>;
+}
+
+export type MCPAuthConfig = MCPOAuthConfig;
 
 export interface MCPServerConfig {
   name: string;
@@ -321,6 +344,32 @@ export interface MCPServerConfig {
   args?: string[];
   url?: string;
   env?: Record<string, string>;
+  auth?: MCPAuthConfig;
+}
+
+// ============================================================================
+// Sandbox Types
+// ============================================================================
+
+export interface SandboxConfig {
+  /** Enable sandboxed execution */
+  enabled: boolean;
+  /** Docker image to use (default: "node:20-slim") */
+  image?: string;
+  /** Memory limit (e.g., "512m") */
+  memoryLimit?: string;
+  /** CPU limit (e.g., "1.0" for one CPU) */
+  cpuLimit?: string;
+  /** Network mode: "none" disables networking, "bridge" allows it (default: "none") */
+  networkMode?: "none" | "bridge" | "host";
+  /** Directories to mount read-only */
+  readOnlyMounts?: string[];
+  /** Directories to mount read-write (working directory is always mounted) */
+  readWriteMounts?: string[];
+  /** Additional environment variables for the container */
+  env?: Record<string, string>;
+  /** Max container lifetime in seconds (default: 300) */
+  maxLifetime?: number;
 }
 
 // ============================================================================

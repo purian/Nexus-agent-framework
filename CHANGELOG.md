@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-04-02
+
+### Added
+- **OAuth 2.0 for MCP Servers** — Full OAuth 2.0 authentication for remote MCP server connections. `OAuthTokenManager` handles client_credentials and refresh_token grants, automatic token caching, proactive refresh scheduling before expiry, and graceful fallback when refresh fails. `MCPServerConfig` now accepts an `auth` field with `authorizationUrl`, `tokenUrl`, `clientId`, `clientSecret`, `scopes`, custom token request headers, and configurable refresh buffer. Authorization headers are automatically injected into SSE/HTTP transports. Tokens are revoked on disconnect and cleaned up on shutdown
+- **Sandboxed Execution** — Bash commands can optionally execute inside Docker containers for full isolation. `DockerSandbox` builds `docker run` commands with configurable memory limits, CPU limits, network mode (`none`/`bridge`/`host`), read-only and read-write volume mounts, and environment variables. Working directory is always mounted at `/workspace`. Supports timeout (via `docker kill`), abort signals, and progress streaming. Active containers are tracked and cleaned up on shutdown. Falls back to direct execution when sandbox is disabled or Docker is unavailable
+- **51 new tests** — OAuth token manager (26), Docker sandbox (25). Total: 620 tests
+
+### Changed
+- `MCPServerConfig` type extended with optional `auth` field
+- `MCPClientManager.connectServer()` now handles OAuth token injection for remote transports
+- `NexusConfig` type extended with optional `sandbox` field
+- Bash tool routes through `DockerSandbox` when `config.sandbox.enabled` is true
+
 ## [0.9.0] - 2026-04-01
 
 ### Added

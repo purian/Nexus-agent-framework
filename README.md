@@ -6,7 +6,7 @@ Secure. Composable. Multi-agent.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-569%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-620%20passing-brightgreen.svg)]()
 
 ---
 
@@ -897,7 +897,7 @@ const plugins = await loader.loadAll(
 
 ## Testing
 
-Nexus has a comprehensive test suite with 569 tests covering all core modules.
+Nexus has a comprehensive test suite with 620 tests covering all core modules.
 
 ```bash
 # Run all tests
@@ -933,7 +933,9 @@ npx vitest run src/permissions/index.test.ts
 | Worktree Isolation | 25 | Create, remove, cleanup, change detection |
 | Background Agents | 21 | Launch, notify, stop, prune, concurrent |
 | Self-Hosting | 33 | Config, system prompt, permissions, root detection |
-| **Total** | **569** | **All passing** |
+| OAuth for MCP | 26 | Token fetch, refresh, caching, expiry, revocation |
+| Sandboxed Execution | 25 | Docker args, execute, timeout, abort, cleanup |
+| **Total** | **620** | **All passing** |
 
 ---
 
@@ -959,7 +961,8 @@ nexus/
 │   │   └── audit-logger.ts       # JSONL tool execution logging
 │   ├── tools/
 │   │   ├── index.ts              # Tool exports + createDefaultTools()
-│   │   ├── bash.ts               # Shell execution
+│   │   ├── bash.ts               # Shell execution (with optional Docker sandbox)
+│   │   ├── sandbox.ts            # Docker sandbox for isolated execution
 │   │   ├── read-file.ts          # File reading
 │   │   ├── write-file.ts         # File writing
 │   │   ├── edit-file.ts          # Search & replace
@@ -971,7 +974,8 @@ nexus/
 │   ├── mcp/
 │   │   ├── index.ts              # MCP exports
 │   │   ├── client.ts             # MCP client (consume tools)
-│   │   └── server.ts             # MCP server (expose tools)
+│   │   ├── server.ts             # MCP server (expose tools)
+│   │   └── oauth.ts              # OAuth 2.0 token manager
 │   ├── agents/
 │   │   ├── index.ts              # Agent exports
 │   │   ├── coordinator.ts        # AgentCoordinator

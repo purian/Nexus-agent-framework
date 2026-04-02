@@ -75,6 +75,9 @@ export type {
   // Config
   NexusConfig,
   MCPServerConfig,
+  MCPOAuthConfig,
+  MCPAuthConfig,
+  SandboxConfig,
 
   // Engine Events
   EngineEvent,
@@ -82,12 +85,16 @@ export type {
 
 // Tools
 export { createDefaultTools } from "./tools/index.js";
+export { DockerSandbox } from "./tools/sandbox.js";
+export type { SandboxExecResult } from "./tools/sandbox.js";
 
 // Permissions
 export { PermissionManager } from "./permissions/index.js";
 
 // MCP
 export { MCPClientManager } from "./mcp/client.js";
+export { OAuthTokenManager } from "./mcp/oauth.js";
+export type { OAuthToken } from "./mcp/oauth.js";
 export { MCPServer } from "./mcp/server.js";
 
 // Agents
