@@ -49,6 +49,19 @@ export class TelegramAdapter implements PlatformAdapter {
     }
   }
 
+  private async downloadFile(fileId: string): Promise<Buffer> {
+    const infoRes = await fetch(
+      `https://api.telegram.org/bot${this.token}/getFile?file_id=${fileId}`,
+    );
+    if (!infoRes.ok) throw new Error(`getFile failed: ${infoRes.status}`);
+    const info = (await infoRes.json()) as { ok: boolean; result: { file_path: string } };
+    if (!info.ok) throw new Error("getFile returned ok=false");
+    const fileUrl = `https://api.telegram.org/file/bot${this.token}/${info.result.file_path}`;
+    const fileRes = await fetch(fileUrl);
+    if (!fileRes.ok) throw new Error(`file download failed: ${fileRes.status}`);
+    return Buffer.from(await fileRes.arrayBuffer());
+  }
+
   private async poll(): Promise<void> {
     while (this.running) {
       try {
@@ -66,19 +79,53 @@ export class TelegramAdapter implements PlatformAdapter {
               chat: { id: number };
               from?: { id: number };
               text?: string;
+              voice?: { file_id: string; mime_type?: string; duration: number };
+              audio?: { file_id: string; mime_type?: string; duration: number };
             };
           }>;
         };
 
         for (const update of data.result) {
           this.offset = update.update_id + 1;
-          if (update.message?.text && this.handler) {
-            this.handler({
-              platform: "telegram",
-              chatId: String(update.message.chat.id),
-              userId: String(update.message.from?.id ?? "unknown"),
-              text: update.message.text,
-            });
+          const msg = update.message;
+          if (!msg || !this.handler) continue;
+
+          const chatId = String(msg.chat.id);
+          const userId = String(msg.from?.id ?? "unknown");
+
+          // A Telegram update can carry BOTH a voice attachment and a server-side
+          // transcription (Telegram Premium auto-transcribes voice notes). Forward
+          // both fields when present so the consumer can choose: prefer a local
+          // transcription stack (better quality) or fall back to Telegram's text.
+          const hasVoice = Boolean(msg.voice || msg.audio);
+          const hasText = Boolean(msg.text);
+
+          if (hasVoice) {
+            const fileObj = (msg.voice ?? msg.audio)!;
+            const mimeType = fileObj.mime_type ?? "audio/ogg";
+            try {
+              const audioData = await this.downloadFile(fileObj.file_id);
+              this.handler({
+                platform: "telegram",
+                chatId,
+                userId,
+                text: msg.text ?? "",
+                attachments: [{ type: "voice", url: fileObj.file_id, data: audioData }],
+                metadata: { mimeType, telegramTranscript: msg.text ?? null },
+              });
+            } catch (err) {
+              // Voice download failed — fall back to text if we have it,
+              // otherwise log so the message isn't silently dropped.
+              if (hasText) {
+                this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
+              } else {
+                console.error(
+                  `[telegram] voice download failed for chat ${chatId}: ${(err as Error).message}`,
+                );
+              }
+            }
+          } else if (hasText) {
+            this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
           }
         }
       } catch (err) {
