@@ -81,6 +81,7 @@ export class TelegramAdapter implements PlatformAdapter {
               text?: string;
               voice?: { file_id: string; mime_type?: string; duration: number };
               audio?: { file_id: string; mime_type?: string; duration: number };
+              document?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number };
             };
           }>;
         };
@@ -98,6 +99,7 @@ export class TelegramAdapter implements PlatformAdapter {
           // both fields when present so the consumer can choose: prefer a local
           // transcription stack (better quality) or fall back to Telegram's text.
           const hasVoice = Boolean(msg.voice || msg.audio);
+          const hasDocument = Boolean(msg.document);
           const hasText = Boolean(msg.text);
 
           if (hasVoice) {
@@ -121,6 +123,31 @@ export class TelegramAdapter implements PlatformAdapter {
               } else {
                 console.error(
                   `[telegram] voice download failed for chat ${chatId}: ${(err as Error).message}`,
+                );
+              }
+            }
+          } else if (hasDocument) {
+            const fileObj = msg.document!;
+            const fileName = fileObj.file_name ?? "document";
+            const mimeType = fileObj.mime_type ?? "application/octet-stream";
+            try {
+              const fileData = await this.downloadFile(fileObj.file_id);
+              this.handler({
+                platform: "telegram",
+                chatId,
+                userId,
+                text: msg.text ?? "",
+                attachments: [{ type: "document", url: fileObj.file_id, data: fileData }],
+                metadata: { mimeType, fileName, fileSize: fileObj.file_size },
+              });
+            } catch (err) {
+              // Document download failed — fall back to text if we have it,
+              // otherwise log so the message isn't silently dropped.
+              if (hasText) {
+                this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
+              } else {
+                console.error(
+                  `[telegram] document download failed for chat ${chatId}: ${(err as Error).message}`,
                 );
               }
             }
