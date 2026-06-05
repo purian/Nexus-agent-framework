@@ -1,0 +1,49 @@
+{
+  "_comment": "Edit this file to customize the runner. Secrets (tokens, keys) live in ~/.nexus/secrets.env, NOT here.",
+
+  "_backend_comment": "Which backend handles user messages: 'claude-code' (shells out to the `claude` CLI — uses your subscription, much cheaper) or 'nexus' (NexusEngine direct, uses ANTHROPIC_API_KEY = pay-per-token).",
+  "backend": "claude-code",
+
+  "claudeCode": {
+    "_comment": "Settings used only when backend == 'claude-code'.",
+    "model": "sonnet",
+    "permissionMode": "bypassPermissions",
+    "maxBudgetUsdPerMessage": 1.0,
+    "timeoutSeconds": 180,
+    "extraArgs": []
+  },
+
+  "nexus": {
+    "_comment": "Settings used only when backend == 'nexus'.",
+    "model": "claude-sonnet-4-6",
+    "permissionMode": "allowAll",
+    "maxBudgetUsdPerSession": 1.0,
+    "maxTurnsPerMessage": 30
+  },
+
+  "schedule": {
+    "_comment": "5-field cron in your local timezone (set TZ in start.sh). Set briefingCron to null to disable.",
+    "briefingCron": "0 8 * * *",
+    "briefingCommand": "python3 /Users/eli/Documents/assistant/project_briefing/briefing.py --no-color"
+  },
+
+  "allowlist": {
+    "_comment": "users: Telegram user IDs always allowed (in DMs and in approved groups). groups: chat IDs of approved groups (negative numbers). pendingGroups: auto-populated when an unknown group messages the bot — review and move to groups[] to approve.",
+    "users": [165185251],
+    "groups": [],
+    "pendingGroups": []
+  },
+
+  "telegram": {
+    "_comment": "pollIntervalMs: how often to poll for updates. Lower = more responsive, higher = fewer API calls.",
+    "pollIntervalMs": 1000
+  },
+
+  "whisper": {
+    "_comment": "Local Whisper transcription for voice messages. command: path to whisper CLI (e.g. 'whisper' or '/usr/local/bin/whisper'). model: tiny/base/small/medium/large.",
+    "enabled": true,
+    "command": "whisper",
+    "model": "large",
+    "extraArgs": ["--language", "en"]
+  }
+}
