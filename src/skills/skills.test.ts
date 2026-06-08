@@ -56,13 +56,18 @@ function makeToolContext(): ToolContext {
 
 describe("SkillLoader", () => {
   let tmpDir: string;
+  // An isolated, empty global skills dir so tests don't pick up the real
+  // user's ~/.nexus/skills/ contents (which would make assertions flaky).
+  let emptyGlobalDir: string;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
+    emptyGlobalDir = makeTmpDir();
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(emptyGlobalDir, { recursive: true, force: true });
   });
 
   // --------------------------------------------------------------------------
@@ -83,7 +88,7 @@ Review the following code changes and provide feedback.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(1);
@@ -111,7 +116,7 @@ Run the deploy script.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(1);
@@ -132,7 +137,7 @@ Think deeply about this problem.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(1);
@@ -150,7 +155,7 @@ No name or description here.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(0);
@@ -207,7 +212,7 @@ Beta prompt.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(2);
@@ -231,7 +236,7 @@ Real prompt.
       "utf-8",
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const skills = await loader.loadSkills(tmpDir);
 
     expect(skills).toHaveLength(1);
@@ -243,7 +248,7 @@ Real prompt.
   // --------------------------------------------------------------------------
 
   it("returns undefined for unknown skill names", async () => {
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     await loader.loadSkills(tmpDir);
 
     expect(loader.getSkill("nonexistent")).toBeUndefined();
@@ -262,7 +267,7 @@ Create a well-formed commit.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     await loader.loadSkills(tmpDir);
 
     const skill = loader.getSkill("commit");
@@ -278,17 +283,20 @@ Create a well-formed commit.
 
 describe("createSkillTool", () => {
   let tmpDir: string;
+  let emptyGlobalDir: string;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
+    emptyGlobalDir = makeTmpDir();
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(emptyGlobalDir, { recursive: true, force: true });
   });
 
   it("returns a tool with the correct name and description", () => {
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const tool = createSkillTool(loader);
 
     expect(tool.name).toBe("skill");
@@ -296,7 +304,7 @@ describe("createSkillTool", () => {
   });
 
   it("reports isConcurrencySafe and isReadOnly as true", () => {
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const tool = createSkillTool(loader);
 
     expect(tool.isConcurrencySafe({ name: "x" })).toBe(true);
@@ -304,7 +312,7 @@ describe("createSkillTool", () => {
   });
 
   it("renderToolUse shows the skill name", () => {
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     const tool = createSkillTool(loader);
 
     expect(tool.renderToolUse!({ name: "deploy" })).toBe("skill: deploy");
@@ -323,7 +331,7 @@ Hello, {{arg0}}! Welcome to {{arg1}}.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     await loader.loadSkills(tmpDir);
 
     const tool = createSkillTool(loader);
@@ -338,7 +346,7 @@ Hello, {{arg0}}! Welcome to {{arg1}}.
   });
 
   it("throws for unknown skill names", async () => {
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     await loader.loadSkills(tmpDir);
 
     const tool = createSkillTool(loader);
@@ -362,7 +370,7 @@ Just do the simple thing.
 `,
     );
 
-    const loader = new SkillLoader();
+    const loader = new SkillLoader(emptyGlobalDir);
     await loader.loadSkills(tmpDir);
 
     const tool = createSkillTool(loader);

@@ -134,16 +134,23 @@ export class SkillLoader {
   private skills: Map<string, Skill> = new Map();
 
   /**
+   * @param globalSkillsDir Directory scanned for global skills. Defaults to
+   *   `~/.nexus/skills`. Overridable so tests stay hermetic (don't pick up the
+   *   real user's global skills).
+   */
+  constructor(private readonly globalSkillsDir: string = join(homedir(), ".nexus", "skills")) {}
+
+  /**
    * Discover and parse all `.md` skill files from:
    * 1. `<projectDir>/.nexus/skills/`
-   * 2. `~/.nexus/skills/` (global, optional)
+   * 2. the global skills dir (`~/.nexus/skills/` by default)
    */
   async loadSkills(projectDir: string): Promise<Skill[]> {
     this.skills.clear();
 
     const dirs = [
       join(projectDir, ".nexus", "skills"),
-      join(homedir(), ".nexus", "skills"),
+      this.globalSkillsDir,
     ];
 
     for (const dir of dirs) {
