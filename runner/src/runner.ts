@@ -35,6 +35,8 @@ import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { ReminderManager, type Reminder } from "./reminders.js";
+import { MissionControlLogger } from "./mission-control.js";
+import { ConversationMemory } from "./conversation-memory.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -269,7 +271,7 @@ function log(level: "info" | "warn" | "error", msg: string): void {
 // ---------------------------------------------------------------------------
 interface Backend {
   readonly name: BackendName;
-  send(chatId: string, prompt: string): Promise<{ text: string; error?: Error; metadata?: Record<string, unknown> }>;
+  send(chatId: string, prompt: string, extraContext?: string): Promise<{ text: string; error?: Error; metadata?: Record<string, unknown> }>;
   reset(chatId: string): void;
 }
 
@@ -338,12 +340,37 @@ class NexusBackend implements Backend {
 // it twice with the same UUID. --resume is the correct flag for continuation.
 class ClaudeCodeBackend implements Backend {
   readonly name = "claude-code" as const;
-  // chatId -> claude session UUID (only set after the first successful message)
+  // chatId -> claude session UUID (only set after the first successful message).
+  // Persisted to disk so conversation continuity survives runner restarts.
   private sessions = new Map<string, string>();
+  private readonly sessionsPath: string;
 
-  constructor(private cfg: RunnerConfig) {}
+  constructor(private cfg: RunnerConfig) {
+    this.sessionsPath = resolve(dirname(cfg._configPath ?? ""), "sessions.json");
+    this.loadSessions();
+  }
 
-  async send(chatId: string, prompt: string): Promise<{ text: string; error?: Error; metadata?: Record<string, unknown> }> {
+  private loadSessions(): void {
+    try {
+      if (existsSync(this.sessionsPath)) {
+        const data = JSON.parse(readFileSync(this.sessionsPath, "utf-8")) as Record<string, string>;
+        this.sessions = new Map(Object.entries(data));
+      }
+    } catch {
+      // Corrupt/unreadable file: start fresh rather than crash.
+      this.sessions = new Map();
+    }
+  }
+
+  private saveSessions(): void {
+    try {
+      writeFileSync(this.sessionsPath, JSON.stringify(Object.fromEntries(this.sessions), null, 2) + "\n", "utf-8");
+    } catch {
+      // Non-fatal: in-memory map still works for this process lifetime.
+    }
+  }
+
+  async send(chatId: string, prompt: string, extraContext?: string): Promise<{ text: string; error?: Error; metadata?: Record<string, unknown> }> {
     const existingSid = this.sessions.get(chatId);
 
     // Load system prompt and inject current time so Claude can compute reminder timestamps.
@@ -355,6 +382,7 @@ class ClaudeCodeBackend implements Backend {
     const now = new Date();
     const timeContext = `\n\nCurrent date/time: ${now.toLocaleDateString("en-IL", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Jerusalem" })} ${now.toLocaleTimeString("en-IL", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem", hour12: false })} (Asia/Jerusalem)`;
     systemPrompt += timeContext;
+    if (extraContext) systemPrompt += extraContext;
 
     const args = [
       "-p",
@@ -408,8 +436,9 @@ class ClaudeCodeBackend implements Backend {
       // Always pin the session_id from the response — this is the canonical
       // session for this chat going forward.
       const respSid = parsed.session_id;
-      if (typeof respSid === "string") {
+      if (typeof respSid === "string" && this.sessions.get(chatId) !== respSid) {
         this.sessions.set(chatId, respSid);
+        this.saveSessions();
       }
 
       return {
@@ -428,7 +457,9 @@ class ClaudeCodeBackend implements Backend {
   }
 
   reset(chatId: string): void {
-    this.sessions.delete(chatId);
+    if (this.sessions.delete(chatId)) {
+      this.saveSessions();
+    }
   }
 }
 
@@ -679,6 +710,13 @@ async function main(): Promise<void> {
   const backend = buildBackend(cfg);
   log("info", `backend: ${backend.name}`);
 
+  // Mission Control message logging (fire-and-forget observability).
+  const mcLogger = new MissionControlLogger(log);
+  log("info", `mission-control logging: ${mcLogger.enabled ? "enabled" : "disabled"}`);
+
+  // Persistent cross-session conversation memory (keyword recall).
+  const convMemory = new ConversationMemory(resolve(dirname(CONFIG_PATH), "conversations.json"));
+
   // ------- Reminders -------
   const remindersPath = resolve(dirname(CONFIG_PATH), "reminders.json");
   const reminderMgr = new ReminderManager(remindersPath);
@@ -797,6 +835,22 @@ async function main(): Promise<void> {
       }
     }
 
+    // Fire-and-forget: log this message as a Mission Control task. We hold the
+    // promise (not awaited) so we can update it after the reply without ever
+    // blocking the conversation on Mission Control availability.
+    const mcTaskPromise: Promise<number | null> = mcLogger.enabled
+      ? mcLogger.startMessageTask(text).catch(() => null)
+      : Promise.resolve(null);
+
+    // Recall relevant past context from earlier sessions and inject it.
+    let recalledContext = "";
+    try {
+      recalledContext = convMemory.recallAndFormat(msg.chatId, text);
+      if (recalledContext) log("info", `recalled past context for ${msg.chatId}`);
+    } catch (e) {
+      log("warn", `conversation recall failed: ${(e as Error).message}`);
+    }
+
     // Route through the configured backend (with retry on failure)
     let response = "";
     let error: Error | undefined;
@@ -804,7 +858,7 @@ async function main(): Promise<void> {
     const MAX_RETRIES = 2;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const result = await backend.send(msg.chatId, text);
+      const result = await backend.send(msg.chatId, text, recalledContext || undefined);
       response = result.text;
       error = result.error;
       metadata = result.metadata;
@@ -822,8 +876,14 @@ async function main(): Promise<void> {
 
     if (error) {
       log("error", `backend error for ${msg.chatId} (all retries exhausted): ${error.message}`);
+      // Reset session to avoid repeating the same error on next message
+      backend.reset(msg.chatId);
+      log("info", `session reset for ${msg.chatId} after error`);
+      void mcTaskPromise.then((id) => {
+        if (id !== null) mcLogger.finishMessageTask(id, false, { sessionId: metadata?.session_id });
+      });
       try {
-        await telegram.sendMessage(msg.chatId, `Error: ${error.message}`);
+        await telegram.sendMessage(msg.chatId, `Error: ${error.message}\n\n(Session reset — next message starts fresh)`);
       } catch {}
       return;
     }
@@ -831,6 +891,17 @@ async function main(): Promise<void> {
     if (metadata) {
       log("info", `reply ok: ${JSON.stringify(metadata)}`);
     }
+
+    void mcTaskPromise.then((id) => {
+      if (id !== null) {
+        mcLogger.finishMessageTask(id, true, {
+          cost: metadata?.informational_cost_usd,
+          turns: metadata?.num_turns,
+          model: metadata?.model,
+          sessionId: metadata?.session_id,
+        });
+      }
+    });
 
     // Extract <reminder> blocks from Claude's response and schedule them
     const { cleaned, reminders: parsedReminders } = extractReminders(response);
@@ -843,6 +914,14 @@ async function main(): Promise<void> {
     }
 
     const reply = (parsedReminders.length > 0 ? cleaned : response) || "(no response)";
+
+    // Persist this exchange for future cross-session recall.
+    try {
+      convMemory.add(msg.chatId, text, reply);
+    } catch (e) {
+      log("warn", `conversation store failed: ${(e as Error).message}`);
+    }
+
     for (const chunk of chunkMessage(reply)) {
       try {
         await telegram.sendMessage(msg.chatId, chunk);
