@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import type { IncomingMessage, PlatformAdapter } from "../types/index.js";
 
 /**
@@ -46,6 +47,26 @@ export class TelegramAdapter implements PlatformAdapter {
     );
     if (!res.ok) {
       throw new Error(`Telegram sendMessage failed: ${res.status}`);
+    }
+
+    // Capture assistant message to memory
+    this.captureMessage("assistant", content);
+  }
+
+  private captureMessage(role: "user" | "assistant", content: string): void {
+    if (!content || content.length < 20) return;
+    try {
+      execSync("python3 ~/.nexus/memory/capture.py", {
+        env: {
+          ...process.env,
+          ROLE: role,
+          CONTENT: content,
+          NAMESPACE: "nexus",
+        },
+        stdio: "ignore",
+      });
+    } catch {
+      // Silent fail - don't break conversation
     }
   }
 
@@ -107,11 +128,13 @@ export class TelegramAdapter implements PlatformAdapter {
             const mimeType = fileObj.mime_type ?? "audio/ogg";
             try {
               const audioData = await this.downloadFile(fileObj.file_id);
+              const textContent = msg.text ?? "";
+              if (textContent) this.captureMessage("user", textContent);
               this.handler({
                 platform: "telegram",
                 chatId,
                 userId,
-                text: msg.text ?? "",
+                text: textContent,
                 attachments: [{ type: "voice", url: fileObj.file_id, data: audioData }],
                 metadata: { mimeType, telegramTranscript: msg.text ?? null },
               });
@@ -119,6 +142,7 @@ export class TelegramAdapter implements PlatformAdapter {
               // Voice download failed — fall back to text if we have it,
               // otherwise log so the message isn't silently dropped.
               if (hasText) {
+                this.captureMessage("user", msg.text!);
                 this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
               } else {
                 console.error(
@@ -132,11 +156,13 @@ export class TelegramAdapter implements PlatformAdapter {
             const mimeType = fileObj.mime_type ?? "application/octet-stream";
             try {
               const fileData = await this.downloadFile(fileObj.file_id);
+              const textContent = msg.text ?? "";
+              if (textContent) this.captureMessage("user", textContent);
               this.handler({
                 platform: "telegram",
                 chatId,
                 userId,
-                text: msg.text ?? "",
+                text: textContent,
                 attachments: [{ type: "document", url: fileObj.file_id, data: fileData }],
                 metadata: { mimeType, fileName, fileSize: fileObj.file_size },
               });
@@ -144,6 +170,7 @@ export class TelegramAdapter implements PlatformAdapter {
               // Document download failed — fall back to text if we have it,
               // otherwise log so the message isn't silently dropped.
               if (hasText) {
+                this.captureMessage("user", msg.text!);
                 this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
               } else {
                 console.error(
@@ -152,6 +179,7 @@ export class TelegramAdapter implements PlatformAdapter {
               }
             }
           } else if (hasText) {
+            this.captureMessage("user", msg.text!);
             this.handler({ platform: "telegram", chatId, userId, text: msg.text! });
           }
         }

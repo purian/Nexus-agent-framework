@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Telegram Conversation History** — Auto-capture of all Telegram messages to memory system
+  - `TelegramAdapter` now automatically saves user messages and assistant responses
+  - Uses existing memory system (`~/.nexus/memory/memory.db`)
+  - Messages stored in `episodic` tier with role metadata
+
+## [0.15.0] - 2026-06-05
+
+### Added
+- **Personal AI Memory System** — Lightweight, zero-dependency memory system for Nexus runner with automatic conversation capture. Built for personal AI assistant use case
+  - SQLite-based storage with FTS5 full-text search + hash-based semantic embeddings
+  - Hybrid search combining keyword matching, semantic similarity, and recency weighting
+  - Memory tiers: `core` (permanent), `procedural` (how-to), `learned` (90d), `episodic` (conversations, 30d), `working` (24h)
+  - Auto-capture hook: automatically stores user and assistant messages via `post-message.sh`
+  - Context loader: pre-prompt memory injection with relevance filtering
+  - CLI interface: `memory_store.py remember/recall/stats` commands
+  - Size: ~200KB base + database growth (~835 bytes per memory)
+  - Performance: <5ms queries on 10K memories, <3ms cold start
+  - Zero external dependencies (Python stdlib + SQLite3 only)
+  - Hebrew + English language support tested
+- **Web Search Integration** — Brave Search API integration for internet research
+  - Custom skill at `~/.claude/skills/web-search/` with Python wrapper
+  - Returns top 5 results with title, URL, and description
+  - Used for researching best practices during memory system design
+
+### Changed
+- Nexus runner now has persistent memory across sessions
+- All conversations automatically captured to `~/.nexus/memory/memory.db`
+
+### Technical Details
+- Implementation: `~/.nexus/memory/memory_store.py` (10KB, 400 lines)
+- Integration: `~/.nexus/runner/hooks/post-message.sh` + `load_context.py`
+- Documentation: `~/.nexus/MEMORY_INTEGRATION.md` (complete integration guide)
+
 ## [0.14.1] - 2026-04-24
 
 ### Added
