@@ -147,6 +147,8 @@ export class MissionControlLogger {
       description: text.slice(0, 2000),
       status: "in_progress",
       priority: "medium",
+      reporter: "nexus",
+      labels: ["telegram"],
     })) as { id?: number } | null;
     if (created && typeof created.id === "number") return created.id;
 
@@ -180,6 +182,7 @@ export class MissionControlLogger {
     await this.request("PUT", `/tasks/${taskId}`, {
       status: ok ? "completed" : "blocked",
       description: parts.join(" · "),
+      actor: "nexus",
     });
   }
 }
