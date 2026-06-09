@@ -37,6 +37,7 @@ import { tmpdir } from "node:os";
 import { ReminderManager, type Reminder } from "./reminders.js";
 import { MissionControlLogger } from "./mission-control.js";
 import { ConversationMemory } from "./conversation-memory.js";
+import { ControlCenter, extractControls, type ControlResult } from "./control.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -560,10 +561,24 @@ async function handleSlashCommand(
   backend: Backend,
   cfg: RunnerConfig,
   reminderMgr: ReminderManager,
+  control: ControlCenter,
+  pendingConfirm: Map<string, { action: string; args: Record<string, unknown> }>,
 ): Promise<boolean> {
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return false;
   const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
+  const actor = msg.userId || "user";
+
+  // Run a control action; if it needs confirmation, stash it and ask.
+  const runControl = async (action: string, args: Record<string, unknown>) => {
+    const r = control.execute(actor, action, args);
+    if (r.needsConfirmation) {
+      pendingConfirm.set(msg.chatId, { action, args });
+      await telegram.sendMessage(msg.chatId, `⚠️ This will ${r.message}. Reply "yes" to confirm or "no" to cancel.`);
+    } else {
+      for (const chunk of chunkMessage(r.message)) await telegram.sendMessage(msg.chatId, chunk);
+    }
+  };
 
   switch (cmd) {
     case "start":
@@ -575,15 +590,75 @@ async function handleSlashCommand(
           "",
           "Commands:",
           "/briefing — run the daily project briefing now",
+          "/schedule briefing HH:MM | off — set or disable the morning briefing",
+          "/status — show config & health",
+          "/set model <name> | budget <usd> — change a setting",
+          "/pause · /resume — do-not-disturb on/off",
+          "/logs [N] — show recent log lines",
+          "/allowlist add|remove <userId>",
+          "/restart — restart the bot",
           "/sessions — list background dev sessions",
           "/reminders — list active reminders",
           "/reset — clear this conversation's history",
           "/whoami — show your user / chat IDs",
           "/help — this message",
           "",
-          "Anything else: send a message and I'll route it through Nexus.",
+          "You can also just ask in plain language, e.g. \"stop the morning briefing\".",
         ].join("\n"),
       );
+      return true;
+
+    case "status":
+      await runControl("status", {});
+      return true;
+
+    case "schedule": {
+      // /schedule briefing 08:00  |  /schedule briefing off
+      const what = (rest[0] || "").toLowerCase();
+      if (what !== "briefing") {
+        await telegram.sendMessage(msg.chatId, "Usage: /schedule briefing HH:MM  (or /schedule briefing off)");
+        return true;
+      }
+      await runControl("set_schedule", { value: rest[1] ?? "" });
+      return true;
+    }
+
+    case "set": {
+      const key = (rest[0] || "").toLowerCase();
+      const value = rest.slice(1).join(" ");
+      if (!key || !value) {
+        await telegram.sendMessage(msg.chatId, "Usage: /set model <name>  |  /set budget <usd>");
+        return true;
+      }
+      await runControl("set", { key, value });
+      return true;
+    }
+
+    case "pause":
+      await runControl("pause", {});
+      return true;
+
+    case "resume":
+      await runControl("resume", {});
+      return true;
+
+    case "logs":
+      await runControl("logs", { lines: Number(rest[0]) || 30 });
+      return true;
+
+    case "allowlist": {
+      const op = (rest[0] || "").toLowerCase();
+      const id = rest[1];
+      if (op !== "add" && op !== "remove") {
+        await telegram.sendMessage(msg.chatId, "Usage: /allowlist add <userId>  |  /allowlist remove <userId>");
+        return true;
+      }
+      await runControl(op === "add" ? "allowlist_add" : "allowlist_remove", { id });
+      return true;
+    }
+
+    case "restart":
+      await runControl("restart", {});
       return true;
 
     case "whoami":
@@ -710,6 +785,11 @@ async function main(): Promise<void> {
   const backend = buildBackend(cfg);
   log("info", `backend: ${backend.name}`);
 
+  // Runtime control state.
+  let paused = false;
+  // chatId -> a pending risky control action awaiting "yes" confirmation.
+  const pendingConfirm = new Map<string, { action: string; args: Record<string, unknown> }>();
+
   // Mission Control message logging (fire-and-forget observability).
   const mcLogger = new MissionControlLogger(log);
   log("info", `mission-control logging: ${mcLogger.enabled ? "enabled" : "disabled"}`);
@@ -811,7 +891,31 @@ async function main(): Promise<void> {
     }
 
     if (!text) return;
-    if (await handleSlashCommand(text, msg, telegram, backend, cfg, reminderMgr)) return;
+
+    // If a risky control action is awaiting confirmation, interpret yes/no here.
+    const pending = pendingConfirm.get(msg.chatId);
+    if (pending) {
+      const t = text.trim().toLowerCase();
+      const yes = ["yes", "y", "confirm", "כן", "ok", "אישור"].includes(t);
+      const no = ["no", "n", "cancel", "לא", "ביטול"].includes(t);
+      if (yes || no) {
+        pendingConfirm.delete(msg.chatId);
+        if (no) { await telegram.sendMessage(msg.chatId, "Cancelled."); return; }
+        const r = control.execute(msg.userId || "user", pending.action, pending.args, true);
+        await telegram.sendMessage(msg.chatId, r.message);
+        return;
+      }
+      // Any other message cancels the pending confirmation and proceeds normally.
+      pendingConfirm.delete(msg.chatId);
+    }
+
+    if (await handleSlashCommand(text, msg, telegram, backend, cfg, reminderMgr, control, pendingConfirm)) return;
+
+    // Do-not-disturb: stay online but don't process messages (allow /resume through above).
+    if (paused) {
+      log("info", `paused — ignoring message from ${msg.chatId}`);
+      return;
+    }
 
     // Show "typing..." indicator and send acknowledgment while processing
     const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || "";
@@ -904,7 +1008,7 @@ async function main(): Promise<void> {
     });
 
     // Extract <reminder> blocks from Claude's response and schedule them
-    const { cleaned, reminders: parsedReminders } = extractReminders(response);
+    const { cleaned: noReminders, reminders: parsedReminders } = extractReminders(response);
     for (const pr of parsedReminders) {
       const r = reminderMgr.add(pr.message, pr.time, "voice", pr.recurring ?? null);
       const dueDate = new Date(pr.time);
@@ -913,7 +1017,23 @@ async function main(): Promise<void> {
       log("info", `reminder created: id=${r.id} "${r.message}" at ${pr.time}`);
     }
 
-    const reply = (parsedReminders.length > 0 ? cleaned : response) || "(no response)";
+    // Extract <control> blocks the LLM emitted and execute them (with confirmation
+    // for risky ones). Append the outcome so the user sees what happened.
+    const { cleaned, controls } = extractControls(noReminders);
+    const controlNotes: string[] = [];
+    for (const c of controls) {
+      const r = control.execute(msg.userId || "user", c.action, c.args);
+      if (r.needsConfirmation) {
+        pendingConfirm.set(msg.chatId, { action: c.action, args: c.args });
+        controlNotes.push(`⚠️ This will ${r.message}. Reply "yes" to confirm or "no" to cancel.`);
+      } else {
+        controlNotes.push(r.message);
+      }
+    }
+
+    let reply = (parsedReminders.length > 0 || controls.length > 0 ? cleaned : response) || "";
+    if (controlNotes.length) reply = (reply ? reply + "\n\n" : "") + controlNotes.join("\n");
+    if (!reply) reply = "(no response)";
 
     // Persist this exchange for future cross-session recall.
     try {
@@ -931,19 +1051,19 @@ async function main(): Promise<void> {
     }
   });
 
-  // ------- Scheduler -------
+  // ------- Scheduler (restartable at runtime via ControlCenter) -------
   let scheduler: TaskScheduler | null = null;
-  if (cfg.schedule.briefingCron) {
+  const applyBriefingSchedule = (cron: string | null) => {
+    try { scheduler?.stop(); } catch {}
+    scheduler = null;
+    if (!cron) {
+      log("info", "scheduler disabled (briefingCron is null)");
+      return;
+    }
     scheduler = new TaskScheduler({
       enabled: true,
       tasks: [
-        {
-          name: "daily-briefing",
-          schedule: cfg.schedule.briefingCron,
-          prompt: "(handled directly)",
-          enabled: true,
-          maxConcurrent: 1,
-        },
+        { name: "daily-briefing", schedule: cron, prompt: "(handled directly)", enabled: true, maxConcurrent: 1 },
       ],
     });
     scheduler.on("event", async (e: SchedulerEvent) => {
@@ -958,10 +1078,34 @@ async function main(): Promise<void> {
       }
     });
     scheduler.start();
-    log("info", `scheduler started: briefing cron='${cfg.schedule.briefingCron}'`);
-  } else {
-    log("info", "scheduler disabled (briefingCron is null)");
-  }
+    log("info", `scheduler started: briefing cron='${cron}'`);
+  };
+  applyBriefingSchedule(cfg.schedule.briefingCron);
+
+  // ------- Control center (bot self-configuration) -------
+  const startedAt = Date.now();
+  const control = new ControlCenter(cfg as never, {
+    applyBriefingSchedule,
+    setPaused: (p) => { paused = p; },
+    isPaused: () => paused,
+    tailLog: (n) => {
+      try {
+        const logFile = process.env.NEXUS_RUNNER_LOG || resolve(dirname(CONFIG_PATH), "runner.log");
+        const lines = readFileSync(logFile, "utf-8").trimEnd().split("\n");
+        return lines.slice(-n).join("\n") || "(log empty)";
+      } catch (e) {
+        return `(could not read log: ${(e as Error).message})`;
+      }
+    },
+    restart: () => {
+      // launchd KeepAlive respawns us on exit; kickstart guarantees a clean cycle.
+      try {
+        spawn("launchctl", ["kickstart", "-k", `gui/${process.getuid?.() ?? 501}/com.eli.nexus-runner`], { detached: true, stdio: "ignore" }).unref();
+      } catch { /* fall through to exit */ }
+      setTimeout(() => process.exit(0), 500);
+    },
+    uptimeSeconds: () => Math.floor((Date.now() - startedAt) / 1000),
+  }, log);
 
   // Graceful shutdown
   let shuttingDown = false;

@@ -8,7 +8,7 @@
     "_comment": "Settings used only when backend == 'claude-code'.",
     "model": "sonnet",
     "permissionMode": "bypassPermissions",
-    "maxBudgetUsdPerMessage": 1.0,
+    "maxBudgetUsdPerMessage": 5.0,
     "timeoutSeconds": 180,
     "extraArgs": []
   },
@@ -23,7 +23,7 @@
 
   "schedule": {
     "_comment": "5-field cron in your local timezone (set TZ in start.sh). Set briefingCron to null to disable.",
-    "briefingCron": "0 8 * * *",
+    "briefingCron": null,
     "briefingCommand": "python3 /Users/eli/Documents/assistant/project_briefing/briefing.py --no-color"
   },
 
