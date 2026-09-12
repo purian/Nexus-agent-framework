@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-09-12
+### Added
+- **Telegram Conversation History** — Auto-capture of all Telegram messages to memory system
+  - `TelegramAdapter` now automatically saves user messages and assistant responses
+  - Uses existing memory system (`~/.nexus/memory/memory.db`)
+  - Messages stored in `episodic` tier with role metadata
+
+## [0.16.0] - 2026-09-12
 
 ### Added
 - `TelegramAdapter`: inline-button support. `callback_query` updates are delivered through the
@@ -28,12 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every asynchronous send (alerts, reminders). Regression test: a send issued while the poll is
   held completes immediately.
 
-
-### Added
-- **Telegram Conversation History** — Auto-capture of all Telegram messages to memory system
-  - `TelegramAdapter` now automatically saves user messages and assistant responses
-  - Uses existing memory system (`~/.nexus/memory/memory.db`)
-  - Messages stored in `episodic` tier with role metadata
 
 ## [0.15.0] - 2026-06-05
 
