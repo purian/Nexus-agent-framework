@@ -341,12 +341,27 @@ export interface MemoryEntry {
 // Platform Types
 // ============================================================================
 
+/** Optional per-message send options. Adapters that don't support a field ignore it. */
+export interface SendMessageOptions {
+  /** Rich-text mode (Telegram: "HTML" | "MarkdownV2"). Caller is responsible for escaping. */
+  parseMode?: "HTML" | "MarkdownV2";
+  /** Platform-native markup, e.g. a Telegram inline keyboard `{ inline_keyboard: [[...]] }`. */
+  replyMarkup?: unknown;
+  disableLinkPreview?: boolean;
+}
+
 export interface PlatformAdapter {
   name: string;
   connect(config: Record<string, unknown>): Promise<void>;
   disconnect(): Promise<void>;
   onMessage(handler: (message: IncomingMessage) => void): void;
-  sendMessage(chatId: string, content: string): Promise<void>;
+  /** Returns the platform message id when the adapter knows it (needed to edit later). Existing
+   * adapters that return void keep compiling — both the third param and the id are optional. */
+  sendMessage(chatId: string, content: string, options?: SendMessageOptions): Promise<void | { messageId?: string }>;
+  /** Button taps (Telegram callback_query): acknowledge, optionally with a toast. */
+  answerCallbackQuery?(callbackQueryId: string, text?: string): Promise<void>;
+  /** Edit a previously sent message; omitting replyMarkup removes any inline keyboard. */
+  editMessage?(chatId: string, messageId: string, content: string, options?: SendMessageOptions): Promise<void>;
 }
 
 export interface IncomingMessage {
