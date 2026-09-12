@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses existing memory system (`~/.nexus/memory/memory.db`)
   - Messages stored in `episodic` tier with role metadata
 
+## [0.16.0] - 2026-09-12
+
+### Added
+- `TelegramAdapter`: inline-button support. `callback_query` updates are delivered through the
+  same `onMessage` handler as an `IncomingMessage` (`text: ""`, `metadata: { callbackQueryId,
+  callbackData, messageId }`) so consumers gate taps with the allowlist they already apply to
+  text. `sendMessage(chatId, content, options?)` accepts `parseMode` / `replyMarkup` /
+  `disableLinkPreview` and returns `{ messageId }`; new `answerCallbackQuery()` and
+  `editMessage()` (omit `replyMarkup` to remove a keyboard). `connect()` accepts `apiBase` so
+  the adapter can be tested against a local mock of the Bot API.
+- `PlatformAdapter` (`src/types/index.ts`): additive — optional third `sendMessage` param and
+  `{ messageId? }` return, plus optional `answerCallbackQuery?` / `editMessage?`. The other six
+  adapters compile unchanged.
+
+### Fixed
+- The 30 s `getUpdates` long-poll now runs on a dedicated socket (`https.request`, `agent: false`)
+  instead of `fetch`. A long-lived response parks Node's shared fetch pool, so every
+  `sendMessage`/`getFile` in the process queued behind the poll — measured as ~11 s delays on
+  every asynchronous send (alerts, reminders). Regression test: a send issued while the poll is
+  held completes immediately.
+
+
 ## [0.15.0] - 2026-06-05
 
 ### Added
